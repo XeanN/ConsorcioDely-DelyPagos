@@ -20,10 +20,10 @@
 
 ## Stack
 - Monorepo con npm workspaces: `apps/api` y `apps/web`.
-- API: Node 22.12+ (recomendado 24 LTS) + TypeScript + Fastify + Prisma. Base de datos SQLite para la demo, preparada para migrar a PostgreSQL cambiando solo `DATABASE_URL` y el provider de Prisma.
+- API: Node 24 LTS + TypeScript + Fastify + Prisma. Base de datos SQLite para la demo, preparada para migrar a PostgreSQL cambiando solo `DATABASE_URL` y el provider de Prisma.
 - Contrato de integración: REST versionado bajo `/api/v1`, documentado con OpenAPI (Swagger UI en `/api/docs`, deshabilitado en producción salvo configuración). Cualquier sistema externo (ERP, otros lenguajes, otros dominios) se integra por este contrato.
 - Tiempo real: Server-Sent Events (SSE) desde la API hacia la web.
-- Web: Angular (componentes standalone + signals, sin NgModules) + TypeScript estricto + Tailwind. Diseño sobrio y legible en monitor de caja.
+- Web: Angular 22 (componentes standalone + signals, sin NgModules) + TypeScript estricto + Tailwind. Diseño sobrio y legible en monitor de caja.
 - Observabilidad: Sentry opcional en API y web (se activa solo si hay `SENTRY_DSN`), sin datos personales.
 - Tests: Vitest. El motor de conciliación debe tener cobertura alta.
 

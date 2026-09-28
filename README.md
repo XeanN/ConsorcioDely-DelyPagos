@@ -20,8 +20,8 @@ Prototipo de verificación y conciliación de pagos para Consorcio Dely S.A.C. C
 
 ## Requisitos
 
-- Node.js 22.12 o superior (recomendado 24 LTS)
-- npm 10 o superior
+- Node.js 24 LTS
+- npm 11 o superior
 
 ## Inicio rápido
 
