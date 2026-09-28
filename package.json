@@ -19,7 +19,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "prepare": "git config core.hooksPath .githooks || true"
+    "prepare": "git config core.hooksPath .githooks || true",
+    "db:migrar": "npm run db:migrar -w apps/api",
+    "db:desplegar": "npm run db:desplegar -w apps/api"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
@@ -29,5 +31,9 @@
     "prettier": "^3.4.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.0"
+  },
+  "allowScripts": {
+    "prisma@7.10.0": true,
+    "@prisma/engines@7.10.0": true
   }
 }

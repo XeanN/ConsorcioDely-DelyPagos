@@ -31,6 +31,30 @@ describe('configuración', () => {
     expect(() => cargarConfig({ CORS_ORIGENES: '*' })).toThrow(/CORS_ORIGENES/);
   });
 
+  it('exige TLS en la conexión a una base de datos remota', () => {
+    expect(() =>
+      cargarConfig({ DATABASE_URL: 'postgresql://u:p@ep-demo.sa-east-1.aws.neon.tech/dely' }),
+    ).toThrow(/DATABASE_URL/);
+    expect(() =>
+      cargarConfig({ DIRECT_URL: 'postgresql://u:p@db.example.com/dely?sslmode=disable' }),
+    ).toThrow(/DIRECT_URL/);
+    expect(
+      cargarConfig({
+        DATABASE_URL: 'postgresql://u:p@ep-demo.sa-east-1.aws.neon.tech/dely?sslmode=require',
+      }).DATABASE_URL,
+    ).toContain('sslmode=require');
+  });
+
+  it('permite conexión sin TLS solo en localhost', () => {
+    expect(cargarConfig({ DATABASE_URL: 'postgresql://u:p@localhost:5432/dely' }).DATABASE_URL).toBe(
+      'postgresql://u:p@localhost:5432/dely',
+    );
+  });
+
+  it('rechaza una contraseña de demo corta', () => {
+    expect(() => cargarConfig({ SEED_CLAVE_DEMO: 'corta' })).toThrow(/SEED_CLAVE_DEMO/);
+  });
+
   it('acepta varios orígenes separados por comas', () => {
     const config = cargarConfig({ CORS_ORIGENES: 'https://caja.dely.pe, https://erp.dely.pe' });
     expect(config.CORS_ORIGENES).toEqual(['https://caja.dely.pe', 'https://erp.dely.pe']);

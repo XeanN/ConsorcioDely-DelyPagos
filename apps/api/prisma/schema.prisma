@@ -1,0 +1,438 @@
+// Esquema de Dely Pagos. PostgreSQL gestionado (Neon). Montos en Decimal(14,2).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enumeraciones ─────────────────────────────────────────
+
+enum Rol {
+  CAJERO
+  VENDEDOR
+  TESORERIA
+  ADMIN
+  INTEGRACION
+}
+
+enum TipoDocumento {
+  DNI
+  RUC
+  CE
+}
+
+enum TipoCliente {
+  MAYORISTA
+  MINORISTA
+  CONSUMIDOR_FINAL
+}
+
+enum Moneda {
+  PEN
+  USD
+}
+
+enum TipoCuentaBancaria {
+  CORRIENTE
+  AHORROS
+}
+
+enum TipoComprobante {
+  FACTURA
+  BOLETA
+}
+
+enum EstadoComprobante {
+  PENDIENTE
+  PARCIAL
+  PAGADO
+}
+
+enum EstadoPedido {
+  ABIERTO
+  PAGADO
+  CANCELADO
+}
+
+enum TipoMovimiento {
+  ABONO
+  CARGO
+}
+
+enum Canal {
+  TRANSFERENCIA
+  INTERBANCARIA
+  YAPE
+  PLIN
+  DEPOSITO_AGENCIA
+}
+
+enum EstadoConciliacion {
+  CONCILIADO
+  PROBABLE
+  SIN_IDENTIFICAR
+  DESCARTADO
+}
+
+enum ResultadoValidacion {
+  COINCIDE
+  NO_COINCIDE
+  NO_DISPONIBLE
+}
+
+enum TipoAlerta {
+  PAGO_CONCILIADO
+  SIN_IDENTIFICAR_ANTIGUO
+  MONTO_INUSUAL
+  PAGO_DUPLICADO
+  PROVEEDOR_NO_COINCIDE
+}
+
+enum Severidad {
+  INFO
+  ADVERTENCIA
+  CRITICA
+}
+
+enum CanalNotificacion {
+  PANTALLA
+  WHATSAPP
+  CORREO
+}
+
+enum TipoDestinatario {
+  VENDEDOR
+  CLIENTE
+  CAJA
+}
+
+enum EstadoNotificacion {
+  PENDIENTE
+  ENVIADA
+  FALLIDA
+}
+
+// ─── Seguridad y usuarios ──────────────────────────────────
+
+model Usuario {
+  id               String    @id @default(uuid()) @db.Uuid
+  nombre           String    @db.VarChar(120)
+  correo           String    @unique @db.VarChar(160)
+  hashClave        String
+  rol              Rol
+  telefono         String?   @db.VarChar(20)
+  activo           Boolean   @default(true)
+  intentosFallidos Int       @default(0)
+  bloqueadoHasta   DateTime?
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+
+  clientesAsignados     Cliente[]             @relation("VendedorCliente")
+  pedidosCreados        PedidoCaja[]
+  confirmaciones        Conciliacion[]
+  aliasRegistrados      AliasCliente[]
+  alertasAtendidas      Alerta[]
+  validacionesProveedor ValidacionProveedor[]
+  auditoria             Auditoria[]
+
+  @@map("usuarios")
+}
+
+// ─── Clientes y cartera ────────────────────────────────────
+
+model Cliente {
+  id                           String        @id @default(uuid()) @db.Uuid
+  tipoDoc                      TipoDocumento
+  numeroDoc                    String        @db.VarChar(15)
+  nombre                       String        @db.VarChar(200)
+  tipo                         TipoCliente
+  telefono                     String?       @db.VarChar(20)
+  correo                       String?       @db.VarChar(160)
+  vendedorId                   String?       @db.Uuid
+  consentimientoNotificaciones Boolean       @default(false)
+  consentimientoEn             DateTime?
+  creadoEn                     DateTime      @default(now())
+  actualizadoEn                DateTime      @updatedAt
+
+  vendedor      Usuario?              @relation("VendedorCliente", fields: [vendedorId], references: [id])
+  alias         AliasCliente[]
+  cuentasOrigen CuentaOrigenCliente[]
+  comprobantes  Comprobante[]
+  pedidos       PedidoCaja[]
+
+  @@unique([tipoDoc, numeroDoc])
+  @@index([nombre])
+  @@map("clientes")
+}
+
+/// Nombres alternativos observados en pagos (familiares, abreviaturas). Se aprenden al confirmar.
+model AliasCliente {
+  id               String   @id @default(uuid()) @db.Uuid
+  clienteId        String   @db.Uuid
+  alias            String   @db.VarChar(200)
+  aliasNormalizado String   @db.VarChar(200)
+  registradoPorId  String?  @db.Uuid
+  creadoEn         DateTime @default(now())
+
+  cliente       Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  registradoPor Usuario? @relation(fields: [registradoPorId], references: [id])
+
+  @@unique([clienteId, aliasNormalizado])
+  @@index([aliasNormalizado])
+  @@map("alias_cliente")
+}
+
+/// Cuentas desde las que un cliente ya pagó. Señal de conciliación.
+model CuentaOrigenCliente {
+  id         String   @id @default(uuid()) @db.Uuid
+  clienteId  String   @db.Uuid
+  banco      String?  @db.VarChar(40)
+  cuenta     String   @db.VarChar(30)
+  vecesVista Int      @default(1)
+  ultimaVez  DateTime @default(now())
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, cuenta])
+  @@index([cuenta])
+  @@map("cuentas_origen_cliente")
+}
+
+model Comprobante {
+  id               String            @id @default(uuid()) @db.Uuid
+  tipo             TipoComprobante
+  serie            String            @db.VarChar(4)
+  numero           Int
+  clienteId        String            @db.Uuid
+  fechaEmision     DateTime          @db.Date
+  fechaVencimiento DateTime          @db.Date
+  total            Decimal           @db.Decimal(14, 2)
+  saldoPendiente   Decimal           @db.Decimal(14, 2)
+  moneda           Moneda
+  estado           EstadoComprobante @default(PENDIENTE)
+  creadoEn         DateTime          @default(now())
+  actualizadoEn    DateTime          @updatedAt
+
+  cliente        Cliente        @relation(fields: [clienteId], references: [id])
+  conciliaciones Conciliacion[]
+
+  @@unique([serie, numero])
+  @@index([clienteId, estado, fechaEmision])
+  @@index([estado, fechaVencimiento])
+  @@map("comprobantes")
+}
+
+/// Pedido en mostrador esperando pago. Caso más frecuente en tienda.
+model PedidoCaja {
+  id          String       @id @default(uuid()) @db.Uuid
+  tienda      String       @db.VarChar(60)
+  caja        String       @db.VarChar(20)
+  monto       Decimal      @db.Decimal(14, 2)
+  moneda      Moneda       @default(PEN)
+  clienteId   String?      @db.Uuid
+  estado      EstadoPedido @default(ABIERTO)
+  creadoPorId String?      @db.Uuid
+  creadoEn    DateTime     @default(now())
+  cerradoEn   DateTime?
+
+  cliente        Cliente?       @relation(fields: [clienteId], references: [id])
+  creadoPor      Usuario?       @relation(fields: [creadoPorId], references: [id])
+  conciliaciones Conciliacion[]
+
+  @@index([estado, creadoEn])
+  @@index([monto])
+  @@map("pedidos_caja")
+}
+
+// ─── Banco ─────────────────────────────────────────────────
+
+/// Cuentas corporativas de Dely.
+model CuentaBancaria {
+  id          String             @id @db.VarChar(40)
+  banco       String             @db.VarChar(40)
+  numero      String             @db.VarChar(30)
+  cci         String             @unique @db.Char(20)
+  moneda      Moneda
+  tipo        TipoCuentaBancaria
+  descripcion String?            @db.VarChar(80)
+  activa      Boolean            @default(true)
+
+  movimientos Movimiento[]
+
+  @@map("cuentas_bancarias")
+}
+
+model Movimiento {
+  id                 String         @id @default(uuid()) @db.Uuid
+  proveedor          String         @db.VarChar(20)
+  idBanco            String         @db.VarChar(80)
+  cuentaId           String         @db.VarChar(40)
+  fechaHora          DateTime
+  tipo               TipoMovimiento
+  monto              Decimal        @db.Decimal(14, 2)
+  moneda             Moneda
+  canal              Canal
+  numeroOperacion    String         @db.VarChar(40)
+  ordenanteNombre    String?        @db.VarChar(200)
+  ordenanteTipoDoc   TipoDocumento?
+  ordenanteNumeroDoc String?        @db.VarChar(15)
+  ordenanteBanco     String?        @db.VarChar(40)
+  ordenanteCuenta    String?        @db.VarChar(30)
+  referencia         String?        @db.VarChar(200)
+  recibidoEn         DateTime       @default(now())
+
+  cuenta         CuentaBancaria @relation(fields: [cuentaId], references: [id])
+  conciliaciones Conciliacion[]
+  alertas        Alerta[]
+
+  // Idempotencia: el mismo movimiento del banco nunca se registra dos veces.
+  @@unique([proveedor, idBanco])
+  @@index([fechaHora])
+  @@index([monto])
+  @@index([cuentaId, fechaHora])
+  @@map("movimientos")
+}
+
+// ─── Conciliación ──────────────────────────────────────────
+
+model Conciliacion {
+  id              String             @id @default(uuid()) @db.Uuid
+  movimientoId    String             @db.Uuid
+  comprobanteId   String?            @db.Uuid
+  pedidoId        String?            @db.Uuid
+  puntaje         Decimal            @db.Decimal(4, 3)
+  estado          EstadoConciliacion
+  motivos         Json
+  candidatos      Json?
+  montoAplicado   Decimal?           @db.Decimal(14, 2)
+  confirmadoPorId String?            @db.Uuid
+  confirmadoEn    DateTime?
+  creadoEn        DateTime           @default(now())
+
+  movimiento     Movimiento     @relation(fields: [movimientoId], references: [id])
+  comprobante    Comprobante?   @relation(fields: [comprobanteId], references: [id])
+  pedido         PedidoCaja?    @relation(fields: [pedidoId], references: [id])
+  confirmadoPor  Usuario?       @relation(fields: [confirmadoPorId], references: [id])
+  notificaciones Notificacion[]
+
+  @@index([estado, creadoEn])
+  @@index([movimientoId])
+  @@map("conciliaciones")
+}
+
+// ─── Proveedores ───────────────────────────────────────────
+
+model Proveedor {
+  id              String   @id @default(uuid()) @db.Uuid
+  ruc             String   @unique @db.Char(11)
+  razonSocial     String   @db.VarChar(200)
+  cci             String   @db.Char(20)
+  titularEsperado String   @db.VarChar(200)
+  bloqueado       Boolean  @default(false)
+  creadoEn        DateTime @default(now())
+  actualizadoEn   DateTime @updatedAt
+
+  validaciones ValidacionProveedor[]
+  alertas      Alerta[]
+
+  @@map("proveedores")
+}
+
+model ValidacionProveedor {
+  id              String              @id @default(uuid()) @db.Uuid
+  proveedorId     String              @db.Uuid
+  cci             String              @db.Char(20)
+  titularDevuelto String?             @db.VarChar(200)
+  resultado       ResultadoValidacion
+  similitud       Decimal?            @db.Decimal(4, 3)
+  usuarioId       String?             @db.Uuid
+  creadoEn        DateTime            @default(now())
+
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id])
+  usuario   Usuario?  @relation(fields: [usuarioId], references: [id])
+
+  @@index([proveedorId, creadoEn])
+  @@map("validaciones_proveedor")
+}
+
+// ─── Alertas, notificaciones e integraciones ──────────────
+
+model Alerta {
+  id            String     @id @default(uuid()) @db.Uuid
+  tipo          TipoAlerta
+  severidad     Severidad
+  mensaje       String     @db.VarChar(300)
+  movimientoId  String?    @db.Uuid
+  proveedorId   String?    @db.Uuid
+  atendida      Boolean    @default(false)
+  atendidaPorId String?    @db.Uuid
+  atendidaEn    DateTime?
+  creadoEn      DateTime   @default(now())
+
+  movimiento  Movimiento? @relation(fields: [movimientoId], references: [id])
+  proveedor   Proveedor?  @relation(fields: [proveedorId], references: [id])
+  atendidaPor Usuario?    @relation(fields: [atendidaPorId], references: [id])
+
+  @@index([atendida, creadoEn])
+  @@map("alertas")
+}
+
+/// Bandeja de salida (patrón outbox): los envíos nunca bloquean la conciliación.
+model Notificacion {
+  id               String             @id @default(uuid()) @db.Uuid
+  canal            CanalNotificacion
+  tipoDestinatario TipoDestinatario
+  destinatario     String             @db.VarChar(160)
+  plantilla        String             @db.VarChar(60)
+  datos            Json
+  estado           EstadoNotificacion @default(PENDIENTE)
+  simulada         Boolean            @default(false)
+  intentos         Int                @default(0)
+  error            String?            @db.VarChar(500)
+  proximoIntento   DateTime           @default(now())
+  enviadaEn        DateTime?
+  conciliacionId   String?            @db.Uuid
+  creadoEn         DateTime           @default(now())
+
+  conciliacion Conciliacion? @relation(fields: [conciliacionId], references: [id])
+
+  @@index([estado, proximoIntento])
+  @@map("notificaciones")
+}
+
+model SuscripcionWebhook {
+  id       String   @id @default(uuid()) @db.Uuid
+  nombre   String   @db.VarChar(80)
+  url      String   @db.VarChar(500)
+  eventos  String[]
+  secreto  String
+  activa   Boolean  @default(true)
+  creadoEn DateTime @default(now())
+
+  @@map("suscripciones_webhook")
+}
+
+// ─── Auditoría (solo inserción, hash encadenado) ──────────
+
+model Auditoria {
+  id           BigInt   @id @default(autoincrement())
+  fecha        DateTime @default(now())
+  usuarioId    String?  @db.Uuid
+  accion       String   @db.VarChar(60)
+  entidad      String   @db.VarChar(40)
+  entidadId    String?  @db.VarChar(80)
+  datos        Json
+  hashAnterior String?  @db.Char(64)
+  hash         String   @unique @db.Char(64)
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([entidad, entidadId])
+  @@index([fecha])
+  @@map("auditoria")
+}

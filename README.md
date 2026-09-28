@@ -23,14 +23,24 @@ Prototipo de verificación y conciliación de pagos para Consorcio Dely S.A.C. C
 - Node.js 24 LTS
 - npm 11 o superior
 
+## Base de datos (PostgreSQL en Neon)
+
+1. Crear un proyecto en [neon.tech](https://neon.tech): nombre `dely-pagos`, PostgreSQL 17, región **AWS São Paulo (sa-east-1)**.
+2. Crear la base `dely_pagos` desde la consola de Neon.
+3. En **Connect**, copiar la cadena *pooled* en `DATABASE_URL` y la *direct* en `DIRECT_URL` del `.env`. Ambas deben terminar en `?sslmode=require`.
+4. El `.env` **nunca** se sube al repositorio. Para otra PC, compártalo por un canal seguro.
+
 ## Inicio rápido
 
 ```bash
-cp .env.example .env
+cp .env.example .env      # y completar DATABASE_URL, DIRECT_URL y SEED_CLAVE_DEMO
 npm install
-npm run seed
+npm run db:desplegar      # crea las tablas
+npm run seed              # carga datos de demostración
 npm run dev
 ```
+
+Para ver los datos: la consola web de Neon o `npm run db:estudio -w apps/api`.
 
 - Web: http://localhost:4200
 - API: http://localhost:4000/api/v1/salud

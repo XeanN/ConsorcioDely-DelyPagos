@@ -27,10 +27,32 @@ const opcional = z
   .optional()
   .transform((v) => (v ? v : undefined));
 
+const HOSTS_LOCALES = new Set(['localhost', '127.0.0.1', '::1']);
+
+/** Fuera de localhost, la conexión a PostgreSQL debe ir cifrada. */
+export function conexionSegura(url: string): boolean {
+  let destino: URL;
+  try {
+    destino = new URL(url);
+  } catch {
+    return false;
+  }
+  if (HOSTS_LOCALES.has(destino.hostname)) return true;
+  return ['require', 'verify-ca', 'verify-full'].includes(
+    destino.searchParams.get('sslmode') ?? '',
+  );
+}
+
+const urlBaseDatos = opcional.refine((v) => v === undefined || conexionSegura(v), {
+  message: 'fuera de localhost la conexión debe usar sslmode=require o verify-full',
+});
+
 const esquemaConfig = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     API_PORT: numero(4000),
+    DATABASE_URL: urlBaseDatos,
+    DIRECT_URL: urlBaseDatos,
     CORS_ORIGENES: listaCsv('http://localhost:4200'),
     CONFIAR_PROXY: booleano(false),
     DOCS_HABILITADOS: booleano(true),
@@ -39,6 +61,9 @@ const esquemaConfig = z
     BANK_PROVIDER: z.enum(['mock', 'bcp-rest', 'bcp-h2h']).default('mock'),
     MOCK_INTERVALO_MIN_S: numero(10),
     MOCK_INTERVALO_MAX_S: numero(40),
+    SEED_CLAVE_DEMO: opcional.refine((v) => v === undefined || v.length >= 12, {
+      message: 'debe tener al menos 12 caracteres',
+    }),
     SENTRY_DSN: opcional,
     SENTRY_DSN_WEB: opcional,
     SENTRY_ENTORNO: z.string().default('desarrollo'),

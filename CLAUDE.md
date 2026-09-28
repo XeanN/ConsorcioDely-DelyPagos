@@ -20,7 +20,8 @@
 
 ## Stack
 - Monorepo con npm workspaces: `apps/api` y `apps/web`.
-- API: Node 24 LTS + TypeScript + Fastify + Prisma. Base de datos SQLite para la demo, preparada para migrar a PostgreSQL cambiando solo `DATABASE_URL` y el provider de Prisma.
+- API: Node 24 LTS + TypeScript + Fastify + Prisma 7 (adaptador `@prisma/adapter-pg`).
+- Base de datos: PostgreSQL 17 gestionado en la nube (Neon, región São Paulo) desde la demo. Sin Docker ni SQLite. Conexión solo con TLS (`sslmode=require`). `DATABASE_URL` (pooled, para la app) y `DIRECT_URL` (directa, para migraciones). El navegador nunca se conecta a la base: solo la API.
 - Contrato de integración: REST versionado bajo `/api/v1`, documentado con OpenAPI (Swagger UI en `/api/docs`, deshabilitado en producción salvo configuración). Cualquier sistema externo (ERP, otros lenguajes, otros dominios) se integra por este contrato.
 - Tiempo real: Server-Sent Events (SSE) desde la API hacia la web.
 - Web: Angular 22 (componentes standalone + signals, sin NgModules) + TypeScript estricto + Tailwind. Diseño sobrio y legible en monitor de caja.
@@ -34,11 +35,12 @@
 - **Escaneo de puertos (nmap)** → en producción solo se expone 443 a través de Cloudflare (Tunnel o proxy); la base de datos y los puertos internos nunca son públicos.
 - **Fuerza bruta / DoS** → `@fastify/rate-limit` global y más estricto en login; bloqueo temporal de cuenta tras intentos fallidos; Cloudflare WAF y protección DDoS delante.
 - **Robo de sesión / CSRF** → JWT de acceso de vida corta (15 min) en memoria del navegador; refresh token en cookie `HttpOnly; Secure; SameSite=Strict` con rotación. Contraseñas con argon2.
-- **Acceso indebido** → roles `CAJERO`, `TESORERIA`, `ADMIN`, `INTEGRACION` verificados en cada endpoint; guards de ruta en Angular solo como apoyo visual.
+- **Acceso indebido** → roles `CAJERO`, `VENDEDOR`, `TESORERIA`, `ADMIN`, `INTEGRACION` verificados en cada endpoint; guards de ruta en Angular solo como apoyo visual.
 - **Otros dominios y puertos** → CORS con lista blanca (`CORS_ORIGENES`), nunca `*`. Sistemas externos usan OAuth2 client credentials con rol `INTEGRACION`.
 - **Suplantación en integraciones** → webhooks salientes firmados con HMAC-SHA256 (`X-Dely-Firma` + timestamp contra replay).
 - **Fuga de información** → errores genéricos al cliente (sin stack traces); Sentry con `dataCollection` restrictivo (sin usuario, cabeceras, cuerpos, parámetros SQL ni variables locales) y depuración de documentos, nombres, cuentas y montos antes de enviar; logs sin secretos.
-- **Manipulación de registros** → la auditoría es solo de inserción y cada registro encadena el hash del anterior (detecta alteraciones).
+- **Manipulación de registros** → la auditoría es solo de inserción (un trigger de PostgreSQL rechaza UPDATE y DELETE) y cada registro encadena el hash del anterior (detecta alteraciones).
+- **Scripts de instalación maliciosos** → npm 11 bloquea scripts de instalación; solo se aprueban paquetes concretos y versiones exactas en `allowScripts`.
 - **Dependencias vulnerables** → `npm audit` en CI y actualizaciones periódicas.
 - **Datos personales** → cumplimiento de la Ley 29733 (Perú): notificaciones a clientes solo con consentimiento registrado.
 
