@@ -1,0 +1,144 @@
+openapi: 3.0.3
+info:
+  title: Contrato bancario PROVISIONAL (mock) — Dely Pagos
+  version: 0.1.0
+  description: >
+    Contrato propio basado en convenciones generales de banca abierta.
+    NO es la API oficial del BCP ni de ningún banco. Sirve para el MockBankProvider.
+    Cuando llegue la documentación oficial, el adaptador real traducirá esa API a estos modelos.
+servers:
+  - url: http://localhost:4010/mock-banco/v1
+paths:
+  /oauth/token:
+    post:
+      summary: Obtener token (client credentials)
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type: { type: string, example: client_credentials }
+                client_id: { type: string }
+                client_secret: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  expires_in: { type: integer, example: 3600 }
+  /cuentas:
+    get:
+      summary: Listar cuentas de la empresa
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Cuenta' }
+  /cuentas/{cuentaId}/saldo:
+    get:
+      parameters: [ { $ref: '#/components/parameters/CuentaId' } ]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Saldo' }
+  /cuentas/{cuentaId}/movimientos:
+    get:
+      parameters:
+        - $ref: '#/components/parameters/CuentaId'
+        - { name: desde, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: hasta, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Movimiento' }
+                  siguienteCursor: { type: string, nullable: true }
+  /validaciones/cuenta:
+    post:
+      summary: Validar titular de una cuenta destino
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cci]
+              properties:
+                cci: { type: string, pattern: '^[0-9]{20}$' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidacionCuenta' }
+webhooks:
+  movimiento.creado:
+    post:
+      summary: Evento push de nuevo abono (si el banco lo soporta)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Movimiento' }
+      responses:
+        '200': { description: Recibido }
+components:
+  parameters:
+    CuentaId: { name: cuentaId, in: path, required: true, schema: { type: string } }
+  schemas:
+    Cuenta:
+      type: object
+      properties:
+        id: { type: string }
+        banco: { type: string, example: BCP }
+        numero: { type: string, example: '191-1234567-0-12' }
+        cci: { type: string }
+        moneda: { type: string, enum: [PEN, USD] }
+        tipo: { type: string, enum: [CORRIENTE, AHORROS] }
+    Saldo:
+      type: object
+      properties:
+        cuentaId: { type: string }
+        disponible: { type: number }
+        contable: { type: number }
+        moneda: { type: string }
+        actualizadoEn: { type: string, format: date-time }
+    Movimiento:
+      type: object
+      properties:
+        id: { type: string }
+        cuentaId: { type: string }
+        fechaHora: { type: string, format: date-time }
+        tipo: { type: string, enum: [ABONO, CARGO] }
+        monto: { type: number, example: 350.00 }
+        moneda: { type: string, enum: [PEN, USD] }
+        canal: { type: string, enum: [TRANSFERENCIA, INTERBANCARIA, YAPE, PLIN, DEPOSITO_AGENCIA] }
+        numeroOperacion: { type: string }
+        ordenante:
+          type: object
+          nullable: true
+          properties:
+            nombre: { type: string, nullable: true, example: 'JUAN C QUISPE M' }
+            tipoDoc: { type: string, nullable: true, enum: [DNI, RUC, CE] }
+            numeroDoc: { type: string, nullable: true }
+            bancoOrigen: { type: string, nullable: true }
+        referencia: { type: string, nullable: true, example: 'PAGO F001-2345' }
+    ValidacionCuenta:
+      type: object
+      properties:
+        cci: { type: string }
+        valida: { type: boolean }
+        titular: { type: string, nullable: true }
+        tipoDocTitular: { type: string, nullable: true }
+        numeroDocTitular: { type: string, nullable: true }
+        banco: { type: string, nullable: true }

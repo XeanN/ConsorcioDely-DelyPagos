@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Elimina cualquier línea de atribución a IA del mensaje de commit.
+MSG_FILE="$1"
+TMP_FILE="$MSG_FILE.tmp"
+grep -v -i -E '^(co-authored-by:.*(claude|anthropic)|.*generated with .*claude|claude-session:|.*noreply@anthropic\.com)' "$MSG_FILE" > "$TMP_FILE"
+# Quita líneas vacías sobrantes al final
+sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$TMP_FILE" > "$MSG_FILE"
+rm -f "$TMP_FILE"
