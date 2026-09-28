@@ -1,5 +1,5 @@
 import type { Routes } from '@angular/router';
-import { autenticadoGuard, invitadoGuard, rolGuard } from './core/auth/guards';
+import { autenticadoGuard, claveAlDiaGuard, invitadoGuard, rolGuard } from './core/auth/guards';
 import { MODULOS } from './core/auth/roles';
 
 export const routes: Routes = [
@@ -12,8 +12,22 @@ export const routes: Routes = [
   {
     path: '',
     canActivate: [autenticadoGuard],
+    canActivateChild: [claveAlDiaGuard],
     loadComponent: () => import('./paginas/marco/marco').then((m) => m.Marco),
     children: [
+      {
+        path: 'cambiar-clave',
+        title: 'Cambiar contraseña · Dely Pagos',
+        loadComponent: () =>
+          import('./paginas/cambiar-clave/cambiar-clave').then((m) => m.CambiarClave),
+      },
+      {
+        path: 'usuarios',
+        title: 'Usuarios · Dely Pagos',
+        canActivate: [rolGuard],
+        data: { roles: ['ADMIN'] },
+        loadComponent: () => import('./paginas/usuarios/usuarios').then((m) => m.Usuarios),
+      },
       {
         path: '',
         title: 'Inicio · Dely Pagos',

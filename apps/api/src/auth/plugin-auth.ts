@@ -2,14 +2,25 @@ import type { FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'f
 import { verificarAcceso } from './tokens.js';
 import type { Rol } from './tipos.js';
 
-/** Verifica el token Bearer y deja el usuario en `request.usuarioSesion`. */
-export function crearAutenticador(secreto: string): preHandlerAsyncHookHandler {
+/**
+ * Verifica el token Bearer y deja el usuario en `request.usuarioSesion`.
+ * Si el usuario debe cambiar su contraseña, solo pasa por rutas que lo permitan.
+ */
+export function crearAutenticador(
+  secreto: string,
+  { permitirClavePendiente = false }: { permitirClavePendiente?: boolean } = {},
+): preHandlerAsyncHookHandler {
   return async function autenticar(request: FastifyRequest, reply: FastifyReply) {
     const cabecera = request.headers.authorization;
     const token = cabecera?.startsWith('Bearer ') ? cabecera.slice(7) : null;
     const usuario = token ? await verificarAcceso(token, secreto) : null;
     if (!usuario) {
       return reply.status(401).send({ error: 'Sesión no válida o expirada' });
+    }
+    if (usuario.debeCambiarClave && !permitirClavePendiente) {
+      return reply
+        .status(403)
+        .send({ error: 'Debe cambiar su contraseña antes de continuar', codigo: 'DEBE_CAMBIAR_CLAVE' });
     }
     request.usuarioSesion = usuario;
   };

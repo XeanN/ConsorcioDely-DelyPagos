@@ -17,6 +17,7 @@ import type { BaseDatos } from './db/prisma.js';
 import { rutasAuditoria } from './rutas/auditoria.js';
 import { rutasAuth } from './rutas/auth.js';
 import { rutasSistema } from './rutas/sistema.js';
+import { rutasUsuarios } from './rutas/usuarios.js';
 
 export interface Dependencias {
   db?: BaseDatos;
@@ -103,6 +104,7 @@ export async function construirApp(config: Config, dependencias: Dependencias = 
     const configAuth = { ...config, JWT_SECRETO: config.JWT_SECRETO };
     await app.register(rutasAuth(db, configAuth), { prefix: '/api/v1/auth' });
     await app.register(rutasAuditoria(db, configAuth.JWT_SECRETO), { prefix: '/api/v1/auditoria' });
+    await app.register(rutasUsuarios(db, configAuth.JWT_SECRETO), { prefix: '/api/v1/usuarios' });
   }
 
   return app;

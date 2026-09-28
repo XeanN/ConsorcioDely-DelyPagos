@@ -14,7 +14,12 @@ export async function firmarAcceso(
   minutos: number,
 ): Promise<{ token: string; expiraEn: Date }> {
   const expiraEn = new Date(Date.now() + minutos * 60_000);
-  const token = await new SignJWT({ usr: usuario.usuario, nom: usuario.nombre, rol: usuario.rol })
+  const token = await new SignJWT({
+    usr: usuario.usuario,
+    nom: usuario.nombre,
+    rol: usuario.rol,
+    dcc: usuario.debeCambiarClave,
+  })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(usuario.id)
     .setIssuer(EMISOR)
@@ -38,11 +43,18 @@ export async function verificarAcceso(token: string, secreto: string): Promise<U
       typeof payload.sub !== 'string' ||
       typeof payload['usr'] !== 'string' ||
       typeof payload['nom'] !== 'string' ||
-      !ROLES.includes(rol as Rol)
+      !ROLES.includes(rol as Rol) ||
+      typeof payload['dcc'] !== 'boolean'
     ) {
       return null;
     }
-    return { id: payload.sub, usuario: payload['usr'], nombre: payload['nom'], rol: rol as Rol };
+    return {
+      id: payload.sub,
+      usuario: payload['usr'],
+      nombre: payload['nom'],
+      rol: rol as Rol,
+      debeCambiarClave: payload['dcc'],
+    };
   } catch {
     return null;
   }

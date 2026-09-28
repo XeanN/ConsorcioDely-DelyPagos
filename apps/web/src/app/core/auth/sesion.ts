@@ -8,6 +8,7 @@ export interface UsuarioSesion {
   usuario: string;
   nombre: string;
   rol: Rol;
+  debeCambiarClave: boolean;
 }
 
 interface RespuestaSesion {
@@ -33,6 +34,7 @@ export class Sesion {
 
   readonly usuario = this.datos.asReadonly();
   readonly autenticado = computed(() => this.datos() !== null);
+  readonly debeCambiarClave = computed(() => this.datos()?.debeCambiarClave ?? false);
 
   accesoToken(): string | null {
     return this.token();
@@ -69,6 +71,26 @@ export class Sesion {
         this.renovacionEnCurso = null;
       });
     return this.renovacionEnCurso;
+  }
+
+  /** Devuelve null si se cambió, o el error y la lista de reglas incumplidas. */
+  async cambiarClave(
+    claveActual: string,
+    claveNueva: string,
+  ): Promise<{ error: string; problemas: string[] } | null> {
+    try {
+      const respuesta = await firstValueFrom(
+        this.http.post<RespuestaSesion>(`${RUTA_AUTH}/cambiar-clave`, { claveActual, claveNueva }),
+      );
+      this.aplicar(respuesta);
+      return null;
+    } catch (error) {
+      const problemas =
+        error instanceof HttpErrorResponse && Array.isArray(error.error?.problemas)
+          ? (error.error.problemas as string[])
+          : [];
+      return { error: mensajeDeError(error), problemas };
+    }
   }
 
   async salir(): Promise<void> {

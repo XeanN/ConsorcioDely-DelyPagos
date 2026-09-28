@@ -6,7 +6,13 @@ import { origenPermitido } from './plugin-auth.js';
 import { calcularHash, jsonCanonico } from '../auditoria/auditoria.js';
 
 const SECRETO = 'secreto-de-pruebas-con-mas-de-32-caracteres';
-const USUARIO = { id: 'u-1', usuario: 'caja1', nombre: 'Caja 1', rol: 'CAJA' as const };
+const USUARIO = {
+  id: 'u-1',
+  usuario: 'caja1',
+  nombre: 'Caja 1',
+  rol: 'CAJA' as const,
+  debeCambiarClave: false,
+};
 
 describe('tokens de acceso', () => {
   it('firma y verifica un token válido', async () => {

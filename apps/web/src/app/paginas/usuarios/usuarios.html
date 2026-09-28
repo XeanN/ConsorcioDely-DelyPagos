@@ -1,0 +1,219 @@
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <div>
+    <h2 class="text-2xl font-bold text-slate-900">Usuarios</h2>
+    <p class="mt-1 text-slate-600">Crear, cambiar rol, desactivar, desbloquear y restablecer contraseñas.</p>
+  </div>
+  <button
+    type="button"
+    class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 focus:ring-2 focus:ring-slate-900/40 focus:ring-offset-2 focus:outline-none"
+    (click)="mostrarNuevo.set(!mostrarNuevo())"
+    [attr.aria-expanded]="mostrarNuevo()"
+  >
+    {{ mostrarNuevo() ? 'Cancelar' : '+ Nuevo usuario' }}
+  </button>
+</div>
+
+@if (aviso(); as texto) {
+  <div role="status" class="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+    {{ texto }}
+  </div>
+}
+@if (error(); as e) {
+  <div role="alert" class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+    <p>{{ e.message }}</p>
+    @if (e.problemas.length > 0) {
+      <ul class="mt-1 list-disc pl-5">
+        @for (p of e.problemas; track p) {
+          <li>{{ p }}</li>
+        }
+      </ul>
+    }
+  </div>
+}
+
+@if (mostrarNuevo()) {
+  <form
+    class="mt-4 grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2"
+    [formGroup]="nuevo"
+    (ngSubmit)="crear()"
+    novalidate
+  >
+    <div>
+      <label for="nuevo-usuario" class="mb-1.5 block text-sm font-semibold text-slate-800">Usuario</label>
+      <input
+        id="nuevo-usuario"
+        formControlName="usuario"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        placeholder="p. ej. caja2"
+        class="block w-full rounded-lg border border-slate-400 px-3 py-2.5 text-base text-black focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20 focus:outline-none"
+      />
+      @if (nuevo.controls.usuario.invalid && nuevo.controls.usuario.touched) {
+        <p class="mt-1 text-sm text-red-700">De 3 a 40 caracteres, empezando con una letra.</p>
+      }
+    </div>
+    <div>
+      <label for="nuevo-nombre" class="mb-1.5 block text-sm font-semibold text-slate-800">Nombre visible</label>
+      <input
+        id="nuevo-nombre"
+        formControlName="nombre"
+        autocomplete="off"
+        placeholder="p. ej. Caja 2 — Tienda Central"
+        class="block w-full rounded-lg border border-slate-400 px-3 py-2.5 text-base text-black focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20 focus:outline-none"
+      />
+    </div>
+    <div>
+      <label for="nuevo-rol" class="mb-1.5 block text-sm font-semibold text-slate-800">Rol</label>
+      <select
+        id="nuevo-rol"
+        formControlName="rol"
+        class="block w-full rounded-lg border border-slate-400 bg-white px-3 py-2.5 text-base text-black focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20 focus:outline-none"
+      >
+        @for (r of roles; track r.valor) {
+          <option [value]="r.valor">{{ r.etiqueta }}</option>
+        }
+      </select>
+    </div>
+    <div>
+      <app-campo-clave
+        idCampo="nuevo-clave"
+        etiqueta="Contraseña temporal"
+        [control]="nuevo.controls.claveTemporal"
+        autocompletar="new-password"
+      />
+      <button
+        type="button"
+        class="mt-1.5 text-sm font-medium text-slate-900 underline hover:no-underline"
+        (click)="generar(nuevo.controls.claveTemporal)"
+      >
+        Generar contraseña segura
+      </button>
+    </div>
+    <div class="sm:col-span-2">
+      <button
+        type="submit"
+        class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+        [disabled]="ocupado()"
+      >
+        Crear usuario
+      </button>
+      <span class="ml-3 text-sm text-slate-500">Deberá cambiar la contraseña en su primer ingreso.</span>
+    </div>
+  </form>
+}
+
+<div class="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+  <table class="min-w-full text-left text-sm">
+    <thead class="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-600 uppercase">
+      <tr>
+        <th scope="col" class="px-4 py-3">Usuario</th>
+        <th scope="col" class="px-4 py-3">Nombre</th>
+        <th scope="col" class="px-4 py-3">Rol</th>
+        <th scope="col" class="px-4 py-3">Estado</th>
+        <th scope="col" class="px-4 py-3">Último ingreso</th>
+        <th scope="col" class="px-4 py-3 text-right">Acciones</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      @if (cargando()) {
+        <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Cargando…</td></tr>
+      }
+      @for (u of usuarios(); track u.id) {
+        <tr [class.opacity-60]="!u.activo">
+          <td class="px-4 py-3 font-mono font-semibold text-slate-900">
+            {{ u.usuario }}
+            @if (u.id === miId()) {
+              <span class="ml-1 font-sans text-xs font-normal text-slate-500">(usted)</span>
+            }
+          </td>
+          <td class="px-4 py-3 text-slate-800">{{ u.nombre }}</td>
+          <td class="px-4 py-3">
+            @if (u.rol === 'INTEGRACION' || u.id === miId()) {
+              <span class="text-slate-800">{{ etiquetaRol[u.rol] }}</span>
+            } @else {
+              <select
+                class="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-black"
+                [value]="u.rol"
+                (change)="cambiarRol(u, $event)"
+                [disabled]="ocupado()"
+                [attr.aria-label]="'Rol de ' + u.usuario"
+              >
+                @for (r of roles; track r.valor) {
+                  <option [value]="r.valor" [selected]="r.valor === u.rol">{{ r.etiqueta }}</option>
+                }
+              </select>
+            }
+          </td>
+          <td class="px-4 py-3">
+            <span class="rounded-full px-2 py-0.5 text-xs font-semibold" [class]="estado(u).clase">
+              {{ estado(u).texto }}
+            </span>
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ fecha(u.ultimoIngresoEn) }}</td>
+          <td class="px-4 py-3">
+            <div class="flex flex-wrap justify-end gap-2">
+              @if (estaBloqueado(u)) {
+                <button type="button" class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-100" (click)="desbloquear(u)" [disabled]="ocupado()">
+                  Desbloquear
+                </button>
+              }
+              <button type="button" class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-100" (click)="abrir(u.id, 'restablecer')" [disabled]="ocupado()">
+                Restablecer contraseña
+              </button>
+              @if (u.id !== miId()) {
+                @if (u.activo) {
+                  <button type="button" class="rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50" (click)="abrir(u.id, 'desactivar')" [disabled]="ocupado()">
+                    Desactivar
+                  </button>
+                } @else {
+                  <button type="button" class="rounded-md border border-emerald-300 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50" (click)="activar(u)" [disabled]="ocupado()">
+                    Activar
+                  </button>
+                }
+              }
+            </div>
+          </td>
+        </tr>
+
+        @if (accion()?.id === u.id) {
+          <tr class="bg-slate-50">
+            <td colspan="6" class="px-4 py-4">
+              @if (accion()?.tipo === 'desactivar') {
+                <div class="flex flex-wrap items-center gap-3">
+                  <p class="text-sm text-slate-800">
+                    ¿Desactivar a <strong>{{ u.usuario }}</strong>? No podrá ingresar y sus sesiones se cerrarán.
+                  </p>
+                  <button type="button" class="rounded-md bg-red-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-800" (click)="confirmarDesactivar(u)" [disabled]="ocupado()">
+                    Sí, desactivar
+                  </button>
+                  <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm" (click)="accion.set(null)">Cancelar</button>
+                </div>
+              } @else {
+                <div class="grid max-w-xl gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <div>
+                    <app-campo-clave
+                      [idCampo]="'restablecer-' + u.id"
+                      [etiqueta]="'Nueva contraseña temporal para ' + u.usuario"
+                      [control]="claveRestablecer"
+                      autocompletar="new-password"
+                    />
+                    <button type="button" class="mt-1.5 text-sm font-medium text-slate-900 underline hover:no-underline" (click)="generar(claveRestablecer)">
+                      Generar contraseña segura
+                    </button>
+                  </div>
+                  <div class="flex gap-2 sm:mb-7">
+                    <button type="button" class="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50" (click)="confirmarRestablecer(u)" [disabled]="ocupado() || !claveRestablecer.value">
+                      Asignar
+                    </button>
+                    <button type="button" class="rounded-md border border-slate-300 px-3 py-2 text-sm" (click)="accion.set(null)">Cancelar</button>
+                  </div>
+                </div>
+              }
+            </td>
+          </tr>
+        }
+      }
+    </tbody>
+  </table>
+</div>

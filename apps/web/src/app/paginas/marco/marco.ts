@@ -15,6 +15,8 @@ export class Marco {
   private readonly router = inject(Router);
 
   protected readonly usuario = this.sesion.usuario;
+  protected readonly debeCambiarClave = this.sesion.debeCambiarClave;
+  protected readonly esAdmin = computed(() => this.usuario()?.rol === 'ADMIN');
   protected readonly etiquetaRol = computed(() => {
     const rol = this.usuario()?.rol;
     return rol ? ETIQUETA_ROL[rol] : '';

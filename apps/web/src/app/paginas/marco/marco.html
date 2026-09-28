@@ -3,6 +3,7 @@
     <a routerLink="/" class="text-lg font-bold text-slate-900">Dely Pagos</a>
 
     <nav class="flex flex-1 flex-wrap gap-1" aria-label="Módulos">
+      @if (!debeCambiarClave()) {
       @for (modulo of modulos(); track modulo.ruta) {
         <a
           [routerLink]="['/', modulo.ruta]"
@@ -12,12 +13,25 @@
           {{ modulo.titulo }}
         </a>
       }
+      @if (esAdmin()) {
+        <a
+          routerLink="/usuarios"
+          routerLinkActive="bg-slate-900 text-white hover:bg-slate-900"
+          class="rounded-md px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+        >
+          Usuarios
+        </a>
+      }
+      }
     </nav>
 
     <div class="flex items-center gap-3">
       <div class="text-right leading-tight">
         <p class="text-sm font-semibold text-slate-900">{{ usuario()?.nombre }}</p>
-        <p class="text-xs text-slate-500">{{ etiquetaRol() }}</p>
+        <p class="text-xs text-slate-500">
+          {{ etiquetaRol() }} ·
+          <a routerLink="/cambiar-clave" class="underline hover:text-slate-900">Mi contraseña</a>
+        </p>
       </div>
       <button
         type="button"

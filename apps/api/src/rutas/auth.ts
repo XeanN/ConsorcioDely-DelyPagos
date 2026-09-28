@@ -14,6 +14,7 @@ const esquemaUsuario = z.object({
   usuario: z.string(),
   nombre: z.string(),
   rol: z.enum(['VENTAS', 'CAJA', 'FINANZAS', 'ADMIN', 'INTEGRACION']),
+  debeCambiarClave: z.boolean(),
 });
 
 const esquemaSesion = z.object({
@@ -22,13 +23,19 @@ const esquemaSesion = z.object({
   accesoExpiraEn: z.string(),
 });
 
-const esquemaError = z.object({ error: z.string() });
+const esquemaError = z.object({
+  error: z.string(),
+  codigo: z.string().optional(),
+  problemas: z.array(z.string()).optional(),
+});
 
 export const rutasAuth =
   (db: BaseDatos, config: Config & { JWT_SECRETO: string }): FastifyPluginAsyncZod =>
   async (app) => {
     const servicio = new ServicioAuth(db, config);
-    const autenticar = crearAutenticador(config.JWT_SECRETO);
+    const autenticarConClavePendiente = crearAutenticador(config.JWT_SECRETO, {
+      permitirClavePendiente: true,
+    });
 
     const contexto = (request: FastifyRequest) => ({
       ip: request.ip ?? null,
@@ -136,7 +143,7 @@ export const rutasAuth =
     app.get(
       '/yo',
       {
-        preHandler: autenticar,
+        preHandler: autenticarConClavePendiente,
         schema: {
           tags: ['autenticación'],
           summary: 'Usuario de la sesión actual',
@@ -145,5 +152,44 @@ export const rutasAuth =
         },
       },
       async (request) => request.usuarioSesion!,
+    );
+
+    app.post(
+      '/cambiar-clave',
+      {
+        preHandler: autenticarConClavePendiente,
+        config: { rateLimit: { max: config.LOGIN_LIMITE_POR_MINUTO, timeWindow: '1 minute' } },
+        schema: {
+          tags: ['autenticación'],
+          summary: 'Cambiar la contraseña propia (cierra las demás sesiones)',
+          security: [{ bearer: [] }],
+          body: z.object({
+            claveActual: z.string().min(1).max(200),
+            claveNueva: z.string().min(1).max(200),
+          }),
+          response: { 200: esquemaSesion, 400: esquemaError, 401: esquemaError, 403: esquemaError },
+        },
+      },
+      async (request, reply) => {
+        if (!origenPermitido(request, config.CORS_ORIGENES)) {
+          return reply.status(403).send({ error: 'Origen no permitido' });
+        }
+        const resultado = await servicio.cambiarClave(
+          request.usuarioSesion!.id,
+          request.body.claveActual,
+          request.body.claveNueva,
+          contexto(request),
+        );
+        if (!resultado.ok) {
+          return reply.status(400).send({
+            error:
+              resultado.motivo === 'CLAVE_ACTUAL'
+                ? 'La contraseña actual no es correcta.'
+                : 'La nueva contraseña no cumple las reglas.',
+            problemas: resultado.problemas,
+          });
+        }
+        return responderSesion(reply, resultado.sesion);
+      },
     );
   };

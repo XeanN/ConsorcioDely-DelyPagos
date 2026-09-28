@@ -1,7 +1,8 @@
 import type { Config } from '../config.js';
 import type { BaseDatos } from '../db/prisma.js';
 import { registrarAuditoria } from '../auditoria/auditoria.js';
-import { verificarClave } from './claves.js';
+import { hashearClave, verificarClave } from './claves.js';
+import { validarClaveNueva } from './politica-clave.js';
 import { firmarAcceso, generarTokenRefresco, hashToken } from './tokens.js';
 import type { UsuarioSesion } from './tipos.js';
 
@@ -28,6 +29,26 @@ export type ResultadoRefresco =
   | { ok: false; motivo: 'INVALIDO' | 'REUTILIZADO' | 'EXPIRADO' | 'USUARIO_INACTIVO' };
 
 const MARGEN_ROTACION_MS = 30_000;
+
+interface RegistroUsuario {
+  id: string;
+  usuario: string;
+  nombre: string;
+  rol: UsuarioSesion['rol'];
+  debeCambiarClave: boolean;
+}
+
+const aSesion = (u: RegistroUsuario): UsuarioSesion => ({
+  id: u.id,
+  usuario: u.usuario,
+  nombre: u.nombre,
+  rol: u.rol,
+  debeCambiarClave: u.debeCambiarClave,
+});
+
+export type ResultadoCambioClave =
+  | { ok: true; sesion: SesionEmitida }
+  | { ok: false; motivo: 'CLAVE_ACTUAL' | 'POLITICA'; problemas: string[] };
 
 export class ServicioAuth {
   constructor(
@@ -66,10 +87,7 @@ export class ServicioAuth {
       where: { id: registro.id },
       data: { intentosFallidos: 0, bloqueadoHasta: null, ultimoIngresoEn: ahora },
     });
-    const sesion = await this.emitirSesion(
-      { id: registro.id, usuario: registro.usuario, nombre: registro.nombre, rol: registro.rol },
-      cliente,
-    );
+    const sesion = await this.emitirSesion(aSesion(registro), cliente);
     await registrarAuditoria(this.db, {
       usuarioId: registro.id,
       accion: 'LOGIN_EXITOSO',
@@ -112,13 +130,44 @@ export class ServicioAuth {
     if (sesion.expiraEn <= new Date()) return { ok: false, motivo: 'EXPIRADO' };
     if (!sesion.usuario.activo) return { ok: false, motivo: 'USUARIO_INACTIVO' };
 
-    const { usuario } = sesion;
-    const nueva = await this.emitirSesion(
-      { id: usuario.id, usuario: usuario.usuario, nombre: usuario.nombre, rol: usuario.rol },
-      cliente,
-      sesion.id,
-    );
+    const nueva = await this.emitirSesion(aSesion(sesion.usuario), cliente, sesion.id);
     return { ok: true, sesion: nueva };
+  }
+
+  /**
+   * Cambia la contraseña del propio usuario. Cierra todas sus sesiones (incluidas
+   * las de otros equipos) y entrega una nueva para seguir trabajando.
+   */
+  async cambiarClave(
+    usuarioId: string,
+    claveActual: string,
+    claveNueva: string,
+    cliente: ContextoCliente,
+  ): Promise<ResultadoCambioClave> {
+    const registro = await this.db.usuario.findUnique({ where: { id: usuarioId } });
+    if (!registro?.activo || !(await verificarClave(registro.hashClave, claveActual))) {
+      return { ok: false, motivo: 'CLAVE_ACTUAL', problemas: ['La contraseña actual no es correcta.'] };
+    }
+    const problemas = validarClaveNueva(claveNueva, registro.usuario);
+    if (claveNueva === claveActual) problemas.push('Debe ser distinta de la contraseña actual.');
+    if (problemas.length > 0) return { ok: false, motivo: 'POLITICA', problemas };
+
+    const actualizado = await this.db.usuario.update({
+      where: { id: usuarioId },
+      data: { hashClave: await hashearClave(claveNueva), debeCambiarClave: false },
+    });
+    await this.db.sesion.updateMany({
+      where: { usuarioId, revocadaEn: null },
+      data: { revocadaEn: new Date() },
+    });
+    await registrarAuditoria(this.db, {
+      usuarioId,
+      accion: 'CLAVE_CAMBIADA',
+      entidad: 'usuario',
+      entidadId: usuarioId,
+      datos: { ip: cliente.ip, eraObligatorio: registro.debeCambiarClave },
+    });
+    return { ok: true, sesion: await this.emitirSesion(aSesion(actualizado), cliente) };
   }
 
   async cerrarSesion(tokenRefresco: string): Promise<void> {

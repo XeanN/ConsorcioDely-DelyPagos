@@ -20,3 +20,10 @@ export const rolGuard: CanActivateFn = (ruta) => {
   const roles = (ruta.data['roles'] ?? []) as Rol[];
   return puedeVer(inject(Sesion).usuario()?.rol, roles) || inject(Router).createUrlTree(['/']);
 };
+
+/** Mientras la contraseña sea temporal, solo se permite la pantalla para cambiarla. */
+export const claveAlDiaGuard: CanActivateFn = (_ruta, estado) => {
+  const sesion = inject(Sesion);
+  if (!sesion.debeCambiarClave() || estado.url.startsWith('/cambiar-clave')) return true;
+  return inject(Router).createUrlTree(['/cambiar-clave']);
+};

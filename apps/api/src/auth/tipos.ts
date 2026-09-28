@@ -8,6 +8,8 @@ export interface UsuarioSesion {
   usuario: string;
   nombre: string;
   rol: Rol;
+  /** Mientras sea true, solo puede cambiar su contraseña o salir. */
+  debeCambiarClave: boolean;
 }
 
 declare module 'fastify' {
