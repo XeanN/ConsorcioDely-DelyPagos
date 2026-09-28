@@ -51,8 +51,8 @@ describe('configuración', () => {
     );
   });
 
-  it('rechaza una contraseña de demo corta', () => {
-    expect(() => cargarConfig({ SEED_CLAVE_DEMO: 'corta' })).toThrow(/SEED_CLAVE_DEMO/);
+  it('rechaza un secreto JWT corto', () => {
+    expect(() => cargarConfig({ JWT_SECRETO: 'corto' })).toThrow(/JWT_SECRETO/);
   });
 
   it('acepta varios orígenes separados por comas', () => {

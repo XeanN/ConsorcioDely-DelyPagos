@@ -25,13 +25,7 @@ try {
     Proveedores: resumen.proveedores,
     'Movimientos (14 días)': resumen.movimientos,
   });
-  console.log('Usuarios: admin@, tesoreria@, caja1@, caja2@, vendedor1..3@dely.demo');
-  if (resumen.claveGenerada) {
-    console.log(`Contraseña generada para todos (guárdela, no se vuelve a mostrar): ${resumen.claveGenerada}`);
-    console.log('Para fijarla, defina SEED_CLAVE_DEMO en .env.');
-  } else {
-    console.log('Contraseña: la definida en SEED_CLAVE_DEMO.');
-  }
+  console.log('Usuarios y contraseñas: los definidos en SEED_USUARIOS_DEMO (.env).');
 } finally {
   banco.detener();
   await db.$disconnect();

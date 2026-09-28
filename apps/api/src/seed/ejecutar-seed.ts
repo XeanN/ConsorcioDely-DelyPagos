@@ -1,5 +1,4 @@
-import { randomBytes } from 'node:crypto';
-import { hash } from '@node-rs/argon2';
+import { hashearClave } from '../auth/claves.js';
 import type { Config } from '../config.js';
 import type { BaseDatos } from '../db/prisma.js';
 import type { BankProvider } from '../banco/tipos.js';
@@ -8,19 +7,11 @@ import { normalizarNombre } from '../conciliacion/normalizar.js';
 import { Aleatorio } from '../simulacion/aleatorio.js';
 import { generarDatosSemilla } from '../simulacion/datos-semilla.js';
 import { generarCelular } from '../simulacion/documentos.js';
+import { parsearUsuariosDemo } from './usuarios-demo.js';
 
 const SEMILLA = 20260928;
 const DIAS_HISTORIAL = 14;
 
-const USUARIOS_DEMO = [
-  { correo: 'admin@dely.demo', nombre: 'Administración', rol: 'ADMIN' },
-  { correo: 'tesoreria@dely.demo', nombre: 'Tesorería', rol: 'TESORERIA' },
-  { correo: 'caja1@dely.demo', nombre: 'Caja 1 — Tienda Central', rol: 'CAJERO' },
-  { correo: 'caja2@dely.demo', nombre: 'Caja 2 — Tienda Central', rol: 'CAJERO' },
-  { correo: 'vendedor1@dely.demo', nombre: 'Vendedor Norte', rol: 'VENDEDOR' },
-  { correo: 'vendedor2@dely.demo', nombre: 'Vendedor Sur', rol: 'VENDEDOR' },
-  { correo: 'vendedor3@dely.demo', nombre: 'Vendedor Centro', rol: 'VENDEDOR' },
-] as const;
 
 export interface ResumenSeed {
   usuarios: number;
@@ -30,13 +21,6 @@ export interface ResumenSeed {
   pedidos: number;
   proveedores: number;
   movimientos: number;
-  claveGenerada: string | null;
-}
-
-/** Contraseña de demo: la de SEED_CLAVE_DEMO o una aleatoria que se muestra una sola vez. */
-function resolverClave(config: Config): { clave: string; generada: boolean } {
-  if (config.SEED_CLAVE_DEMO) return { clave: config.SEED_CLAVE_DEMO, generada: false };
-  return { clave: randomBytes(12).toString('base64url'), generada: true };
 }
 
 export async function ejecutarSeed(
@@ -49,30 +33,33 @@ export async function ejecutarSeed(
     throw new Error('El seed borra todos los datos y no se ejecuta en producción.');
   }
 
+  const usuariosDemo = parsearUsuariosDemo(config.SEED_USUARIOS_DEMO);
+  const totalVentas = usuariosDemo.filter((u) => u.rol === 'VENTAS').length;
   const aleatorio = new Aleatorio(SEMILLA);
-  const datos = generarDatosSemilla(aleatorio, ahora, 3);
-  const { clave, generada } = resolverClave(config);
-  const hashClave = await hash(clave);
+  const datos = generarDatosSemilla(aleatorio, ahora, Math.max(totalVentas, 1));
 
   // Nombres de tabla fijos (sin datos de entrada): no hay riesgo de inyección.
   await db.$executeRaw`TRUNCATE TABLE auditoria, notificaciones, alertas, conciliaciones,
     movimientos, validaciones_proveedor, proveedores, pedidos_caja, comprobantes,
     cuentas_origen_cliente, alias_cliente, clientes, cuentas_bancarias,
-    suscripciones_webhook, usuarios RESTART IDENTITY CASCADE`;
+    suscripciones_webhook, sesiones, usuarios RESTART IDENTITY CASCADE`;
 
-  // Usuarios de demo por rol.
-  const usuarios = await Promise.all(
-    USUARIOS_DEMO.map((u) =>
-      db.usuario.create({
+  // Usuarios de demo por rol (definidos en SEED_USUARIOS_DEMO, nunca en el código).
+  const usuarios = [];
+  for (const u of usuariosDemo) {
+    usuarios.push(
+      await db.usuario.create({
         data: {
-          ...u,
-          hashClave,
-          telefono: u.rol === 'VENDEDOR' ? generarCelular(aleatorio) : null,
+          usuario: u.usuario,
+          nombre: u.nombre,
+          rol: u.rol,
+          hashClave: await hashearClave(u.clave),
+          telefono: u.rol === 'VENTAS' ? generarCelular(aleatorio) : null,
         },
       }),
-    ),
-  );
-  const vendedores = usuarios.filter((u) => u.rol === 'VENDEDOR');
+    );
+  }
+  const vendedores = usuarios.filter((u) => u.rol === 'VENTAS');
 
   // Cuentas corporativas, leídas desde el proveedor bancario.
   const cuentas = await banco.listarCuentas();
@@ -115,7 +102,7 @@ export async function ejecutarSeed(
     })),
   });
 
-  const cajero = usuarios.find((u) => u.rol === 'CAJERO');
+  const cajero = usuarios.find((u) => u.rol === 'CAJA');
   await db.pedidoCaja.createMany({
     data: datos.pedidos.map((p) => ({
       tienda: p.tienda,
@@ -174,6 +161,5 @@ export async function ejecutarSeed(
     pedidos: datos.pedidos.length,
     proveedores: PROVEEDORES_SIMULADOS.length,
     movimientos: totalMovimientos,
-    claveGenerada: generada ? clave : null,
   };
 }

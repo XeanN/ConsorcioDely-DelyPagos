@@ -61,9 +61,18 @@ const esquemaConfig = z
     BANK_PROVIDER: z.enum(['mock', 'bcp-rest', 'bcp-h2h']).default('mock'),
     MOCK_INTERVALO_MIN_S: numero(10),
     MOCK_INTERVALO_MAX_S: numero(40),
-    SEED_CLAVE_DEMO: opcional.refine((v) => v === undefined || v.length >= 12, {
-      message: 'debe tener al menos 12 caracteres',
+    /** Secreto para firmar los tokens de acceso (HS256). */
+    JWT_SECRETO: opcional.refine((v) => v === undefined || v.length >= 32, {
+      message: 'debe tener al menos 32 caracteres',
     }),
+    ACCESO_MINUTOS: numero(15),
+    SESION_HORAS: numero(12),
+    LOGIN_MAX_INTENTOS: numero(5),
+    LOGIN_BLOQUEO_MINUTOS: numero(15),
+    /** Intentos de login por IP y minuto (además del bloqueo por usuario). */
+    LOGIN_LIMITE_POR_MINUTO: numero(10),
+    /** Usuarios de demo: "usuario:clave,usuario:clave". El rol sale del prefijo (ventas, caja, finanzas, admin). */
+    SEED_USUARIOS_DEMO: opcional,
     SENTRY_DSN: opcional,
     SENTRY_DSN_WEB: opcional,
     SENTRY_ENTORNO: z.string().default('desarrollo'),

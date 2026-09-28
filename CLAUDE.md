@@ -35,7 +35,7 @@
 - **Escaneo de puertos (nmap)** → en producción solo se expone 443 a través de Cloudflare (Tunnel o proxy); la base de datos y los puertos internos nunca son públicos.
 - **Fuerza bruta / DoS** → `@fastify/rate-limit` global y más estricto en login; bloqueo temporal de cuenta tras intentos fallidos; Cloudflare WAF y protección DDoS delante.
 - **Robo de sesión / CSRF** → JWT de acceso de vida corta (15 min) en memoria del navegador; refresh token en cookie `HttpOnly; Secure; SameSite=Strict` con rotación. Contraseñas con argon2.
-- **Acceso indebido** → roles `CAJERO`, `VENDEDOR`, `TESORERIA`, `ADMIN`, `INTEGRACION` verificados en cada endpoint; guards de ruta en Angular solo como apoyo visual.
+- **Acceso indebido** → roles verificados en cada endpoint (ver "Roles y permisos"); guards de ruta en Angular solo como apoyo visual.
 - **Otros dominios y puertos** → CORS con lista blanca (`CORS_ORIGENES`), nunca `*`. Sistemas externos usan OAuth2 client credentials con rol `INTEGRACION`.
 - **Suplantación en integraciones** → webhooks salientes firmados con HMAC-SHA256 (`X-Dely-Firma` + timestamp contra replay).
 - **Fuga de información** → errores genéricos al cliente (sin stack traces); Sentry con `dataCollection` restrictivo (sin usuario, cabeceras, cuerpos, parámetros SQL ni variables locales) y depuración de documentos, nombres, cuentas y montos antes de enviar; logs sin secretos.
@@ -43,6 +43,30 @@
 - **Scripts de instalación maliciosos** → npm 11 bloquea scripts de instalación; solo se aprueban paquetes concretos y versiones exactas en `allowScripts`.
 - **Dependencias vulnerables** → `npm audit` en CI y actualizaciones periódicas.
 - **Datos personales** → cumplimiento de la Ley 29733 (Perú): notificaciones a clientes solo con consentimiento registrado.
+
+## Roles y permisos
+- Roles de negocio: `VENTAS`, `CAJA`, `FINANZAS`. Roles de sistema: `ADMIN` (acceso total) e `INTEGRACION` (otros sistemas por OAuth2 client credentials). Ningún usuario de demo es ADMIN.
+- Login por nombre de usuario (p. ej. `caja1`), no por correo. El rol se muestra en la interfaz como Ventas, Caja o Finanzas.
+- Módulos por rol (la API aplica los mismos permisos que el menú):
+  | Módulo | VENTAS | CAJA | FINANZAS |
+  |---|---|---|---|
+  | Monitor de movimientos | ✓ | ✓ | ✓ |
+  | Conciliación (confirmar PROBABLE) | | ✓ | ✓ |
+  | Alertas | ✓ (de sus clientes) | ✓ | ✓ |
+  | Validación de proveedores | | | ✓ |
+  | Posición de caja | | | ✓ |
+  | Verificación de auditoría | | | ✓ |
+- Usuarios de demo en `SEED_USUARIOS_DEMO` del `.env` (`usuario:clave,...`, rol por prefijo). Nunca en el código.
+- Sesión: token de acceso de 15 min solo en memoria; refresh token opaco en cookie `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`, rotado en cada uso. Reusar un token rotado revoca todas las sesiones del usuario (margen de 30 s para pestañas simultáneas). En la base solo se guarda el SHA-256 del token.
+- Bloqueo por usuario tras `LOGIN_MAX_INTENTOS` fallos y límite de intentos por IP. Mismo mensaje para usuario inexistente y clave incorrecta.
+
+## Tests
+- Unitarios: sin base de datos.
+- Integración (`*.int.test.ts`): contra `TEST_DATABASE_URL`, una base exclusiva de pruebas (`dely_pruebas` en Neon) que se vacía en cada ejecución. Si no está configurada, se omiten. Nunca apuntar a la base de la demo (el helper lo impide).
+
+## Ver la web desde internet (demo)
+- Cloudflare Quick Tunnel: `cloudflared tunnel --url http://localhost:4200` genera una URL `https://*.trycloudflare.com` temporal. El dev server de Angular acepta solo ese dominio (`allowedHosts`). La URL cambia en cada ejecución y es pública: solo el login la protege. Cerrar el túnel al terminar.
+- Producción (F8): túnel con nombre en la cuenta Cloudflare de Dely + Cloudflare Access/WAF.
 
 ## Arquitectura bancaria (adaptador)
 ```ts

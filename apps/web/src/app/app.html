@@ -1,20 +1,7 @@
-<div class="min-h-screen">
-  @if (configuracion.valor()?.modoDemo) {
-    <app-banner-demo />
-  }
-  <header class="border-b border-slate-200 bg-white px-6 py-4">
-    <h1 class="text-xl font-bold">Dely Pagos</h1>
-    <p class="text-sm text-slate-500">Verificación y conciliación de pagos</p>
-  </header>
-  <main class="p-6">
-    @if (configuracion.error(); as error) {
-      <p class="text-red-700">{{ error }}</p>
-    }
-    @if (configuracion.valor(); as config) {
-      <p class="text-slate-700">
-        API en línea · proveedor bancario: <strong>{{ config.proveedorBancario }}</strong>
-      </p>
-    }
-    <router-outlet />
-  </main>
-</div>
+@if (configuracion.valor()?.modoDemo) {
+  <app-banner-demo />
+}
+@if (configuracion.error(); as error) {
+  <div role="alert" class="bg-red-700 px-4 py-2 text-center text-sm font-medium text-white">{{ error }}</div>
+}
+<router-outlet />

@@ -13,9 +13,9 @@ datasource db {
 // ─── Enumeraciones ─────────────────────────────────────────
 
 enum Rol {
-  CAJERO
-  VENDEDOR
-  TESORERIA
+  VENTAS
+  CAJA
+  FINANZAS
   ADMIN
   INTEGRACION
 }
@@ -121,17 +121,22 @@ enum EstadoNotificacion {
 
 model Usuario {
   id               String    @id @default(uuid()) @db.Uuid
+  /// Nombre de inicio de sesión (p. ej. "caja1"), en minúsculas.
+  usuario          String    @unique @db.VarChar(40)
   nombre           String    @db.VarChar(120)
-  correo           String    @unique @db.VarChar(160)
+  correo           String?   @unique @db.VarChar(160)
   hashClave        String
   rol              Rol
   telefono         String?   @db.VarChar(20)
   activo           Boolean   @default(true)
+  debeCambiarClave Boolean   @default(false)
   intentosFallidos Int       @default(0)
   bloqueadoHasta   DateTime?
+  ultimoIngresoEn  DateTime?
   creadoEn         DateTime  @default(now())
   actualizadoEn    DateTime  @updatedAt
 
+  sesiones              Sesion[]
   clientesAsignados     Cliente[]             @relation("VendedorCliente")
   pedidosCreados        PedidoCaja[]
   confirmaciones        Conciliacion[]
@@ -141,6 +146,25 @@ model Usuario {
   auditoria             Auditoria[]
 
   @@map("usuarios")
+}
+
+/// Sesión de refresco. Solo se guarda el hash SHA-256 del token, nunca el token.
+/// Cada refresco rota el token; reutilizar uno ya rotado revoca todas las sesiones del usuario.
+model Sesion {
+  id             String    @id @default(uuid()) @db.Uuid
+  usuarioId      String    @db.Uuid
+  hashToken      String    @unique @db.Char(64)
+  creadaEn       DateTime  @default(now())
+  expiraEn       DateTime
+  revocadaEn     DateTime?
+  reemplazadaPor String?   @db.Uuid
+  ip             String?   @db.VarChar(45)
+  agenteUsuario  String?   @db.VarChar(200)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, revocadaEn])
+  @@map("sesiones")
 }
 
 // ─── Clientes y cartera ────────────────────────────────────

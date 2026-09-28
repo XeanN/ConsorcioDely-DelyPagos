@@ -42,6 +42,20 @@ npm run dev
 
 Para ver los datos: la consola web de Neon o `npm run db:estudio -w apps/api`.
 
+## Usuarios de demostración
+
+Se definen en `SEED_USUARIOS_DEMO` del `.env` con el formato `usuario:clave,usuario:clave`. El rol sale del prefijo del usuario: `ventas`, `caja`, `finanzas` o `admin`. Después de cambiarlos, ejecutar `npm run seed`.
+
+## Mostrar la demo por internet (Cloudflare Tunnel)
+
+Con la app corriendo (`npm run dev`), en otra terminal:
+
+```bash
+cloudflared tunnel --url http://localhost:4200
+```
+
+Aparece una dirección `https://….trycloudflare.com` que funciona desde cualquier equipo mientras el túnel esté abierto. Es temporal y pública (la protege el login): cerrarla con `Ctrl+C` al terminar.
+
 - Web: http://localhost:4200
 - API: http://localhost:4000/api/v1/salud
 - Contrato OpenAPI: http://localhost:4000/api/docs
