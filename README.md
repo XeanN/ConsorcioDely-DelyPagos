@@ -1,5 +1,7 @@
 # Dely Pagos
 
+[![CI](https://github.com/XeanN/ConsorcioDely-DelyPagos/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/XeanN/ConsorcioDely-DelyPagos/actions/workflows/ci.yml)
+
 Prototipo de verificación y conciliación de pagos para Consorcio Dely S.A.C. Complementa al ERP existente (no lo reemplaza).
 
 > **Modo demostración:** mientras no exista convenio de APIs con el BCP, los datos bancarios son simulados (`BANK_PROVIDER=mock`).

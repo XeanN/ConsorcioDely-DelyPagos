@@ -1,0 +1,177 @@
+# Integración continua de Dely Pagos.
+# Las acciones de terceros se fijan por hash de commit (no por etiqueta) para que un
+# cambio malicioso en la etiqueta no llegue al CI. Dependabot las mantiene actualizadas.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# Mínimo privilegio: solo lectura del código salvo donde se indique.
+permissions:
+  contents: read
+
+# Un push nuevo cancela la ejecución anterior de la misma rama.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  calidad:
+    name: Lint y tipos
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  tests-api:
+    name: Tests API (unitarios + integración con PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # PostgreSQL temporal solo para esta ejecución: no se usan credenciales de Neon en GitHub.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: dely_pruebas
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/dely_pruebas
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Tests (las migraciones se aplican a la base temporal)
+        run: npx vitest run --root apps/api
+
+  tests-web:
+    name: Tests web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm test -w apps/web
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Paquetes listos para desplegar; el despliegue (CD) se conecta en la fase F8.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dely-pagos-${{ github.sha }}
+          path: |
+            apps/api/dist
+            apps/api/prisma
+            apps/web/dist/web/browser
+          retention-days: 7
+          if-no-files-found: error
+
+  seguridad:
+    name: Seguridad
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # historial completo: se revisan todos los commits
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Dependencias con vulnerabilidades altas o críticas
+        run: npm audit --audit-level=high
+      - name: Secretos en el código o en el historial
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commits sin menciones a IA (regla 8)
+        run: |
+          if git log --format=%B | grep -inE 'co-authored-by:.*(claude|anthropic)|generated with .*claude|claude-session:|noreply@anthropic\.com'; then
+            echo "::error::Hay commits con atribución a IA. Ver regla 8 de CLAUDE.md."
+            exit 1
+          fi
+
+  resumen:
+    name: Resumen y tiempos
+    runs-on: ubuntu-latest
+    needs: [calidad, tests-api, tests-web, build, seguridad]
+    if: always()
+    permissions:
+      actions: read
+    steps:
+      - name: Tabla de tiempos por etapa
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { appendFileSync } from 'node:fs';
+          const base = `${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+          const headers = { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' };
+          const run = await (await fetch(base, { headers })).json();
+          const { jobs } = await (await fetch(`${base}/jobs?per_page=50`, { headers })).json();
+          const seg = (a, b) => Math.max(0, Math.round((new Date(b) - new Date(a)) / 1000));
+          const fmt = (s) => (s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`);
+          const icono = { success: '✅', failure: '❌', cancelled: '⏹️', skipped: '⏭️' };
+          const filas = jobs
+            .filter((j) => j.name !== 'Resumen y tiempos' && j.completed_at)
+            .map((j) => `| ${icono[j.conclusion] ?? '•'} ${j.name} | ${fmt(seg(j.started_at, j.completed_at))} |`);
+          const total = fmt(seg(run.run_started_at, new Date().toISOString()));
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            '## Dely Pagos — resultado del CI',
+            '',
+            `Commit \`${process.env.GITHUB_SHA.slice(0, 7)}\` · duración total: **${total}**`,
+            '',
+            '| Etapa | Duración |',
+            '|---|---|',
+            ...filas,
+            '',
+          ].join('\n'));
+          EOF
+      - name: Fallar si alguna etapa falló
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

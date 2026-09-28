@@ -64,6 +64,12 @@
 - Unitarios: sin base de datos.
 - Integración (`*.int.test.ts`): contra `TEST_DATABASE_URL`, una base exclusiva de pruebas (`dely_pruebas` en Neon) que se vacía en cada ejecución. Si no está configurada, se omiten. Nunca apuntar a la base de la demo (el helper lo impide).
 
+## CI (GitHub Actions)
+- `.github/workflows/ci.yml` en cada push y pull request a `master`: lint y tipos, tests de la API (con PostgreSQL 17 temporal como servicio; sin credenciales de Neon en GitHub), tests de la web, build (artefacto descargable 7 días), seguridad (`npm audit` altas/críticas, gitleaks sobre todo el historial, commits sin menciones a IA) y una tabla de tiempos por etapa en el resumen de la ejecución.
+- Acciones de terceros fijadas por hash de commit; Dependabot (`.github/dependabot.yml`) propone actualizaciones semanales como pull requests.
+- Vulnerabilidades en dependencias de Prisma (`mysql2`, `deepmerge-ts`) corregidas con `overrides` en el `package.json` raíz; verificado que Prisma valida, genera y migra. Al actualizar Prisma, revisar si los overrides siguen siendo necesarios y actualizar `allowScripts` a la nueva versión exacta.
+- CD: pendiente de F8 (depende del hosting). El CI ya produce los paquetes listos para desplegar.
+
 ## Ver la web desde internet (demo)
 - Cloudflare Quick Tunnel: `cloudflared tunnel --url http://localhost:4200` genera una URL `https://*.trycloudflare.com` temporal. El dev server de Angular acepta solo ese dominio (`allowedHosts`). La URL cambia en cada ejecución y es pública: solo el login la protege. Cerrar el túnel al terminar.
 - Producción (F8): túnel con nombre en la cuenta Cloudflare de Dely + Cloudflare Access/WAF.

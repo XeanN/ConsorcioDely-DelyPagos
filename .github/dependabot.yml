@@ -1,0 +1,32 @@
+# Actualizaciones automáticas de seguridad y versiones (llegan como pull requests
+# y el CI las valida antes de aceptarlas).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Lima
+    open-pull-requests-limit: 5
+    groups:
+      angular:
+        patterns: ['@angular/*', '@angular-devkit/*']
+      prisma:
+        patterns: ['prisma', '@prisma/*']
+      fastify:
+        patterns: ['fastify', '@fastify/*', 'fastify-*']
+      herramientas:
+        dependency-type: development
+        update-types: [minor, patch]
+    commit-message:
+      prefix: 'chore'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Lima
+    commit-message:
+      prefix: 'chore'
