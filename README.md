@@ -27,7 +27,7 @@ Prototipo de verificación y conciliación de pagos para Consorcio Dely S.A.C. C
 
 1. Crear un proyecto en [neon.tech](https://neon.tech): nombre `dely-pagos`, PostgreSQL 17, región **AWS São Paulo (sa-east-1)**.
 2. Crear la base `dely_pagos` desde la consola de Neon.
-3. En **Connect**, copiar la cadena *pooled* en `DATABASE_URL` y la *direct* en `DIRECT_URL` del `.env`. Ambas deben terminar en `?sslmode=require`.
+3. En **Connect**, copiar la cadena *pooled* en `DATABASE_URL` y la *direct* en `DIRECT_URL` del `.env`. Ambas deben terminar en `?sslmode=verify-full`.
 4. El `.env` **nunca** se sube al repositorio. Para otra PC, compártalo por un canal seguro.
 
 ## Inicio rápido
