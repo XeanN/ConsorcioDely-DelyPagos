@@ -1,7 +1,11 @@
 import { cargarConfig } from './config.js';
-import { construirApp } from './app.js';
+import { iniciarSentry } from './instrumentacion.js';
 
 const config = cargarConfig();
+iniciarSentry(config);
+
+// Se importa después de iniciar Sentry para que pueda instrumentar Fastify.
+const { construirApp } = await import('./app.js');
 const app = await construirApp(config);
 
 try {

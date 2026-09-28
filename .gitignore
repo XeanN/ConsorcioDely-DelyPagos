@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+.angular/
+out-tsc/
 *.log
 .env
 .env.*

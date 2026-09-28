@@ -7,14 +7,20 @@ Prototipo de verificación y conciliación de pagos para Consorcio Dely S.A.C. C
 ## Módulos
 
 1. **Monitor de movimientos** en tiempo real (SSE), con filtros, totales del día y búsqueda por monto.
-2. **Conciliación automática** contra pedidos en caja y comprobantes pendientes (monto, nombre del ordenante, referencia).
-3. **Alertas** de pago recibido en pantalla (WhatsApp y correo como fase posterior).
+2. **Conciliación automática** contra pedidos en caja y comprobantes pendientes (monto, nombre del ordenante, referencia y cuenta de origen).
+3. **Alertas de pago recibido** en pantalla, por WhatsApp y por correo al vendedor y al cliente, además de webhooks firmados para otros sistemas.
 4. **Validación de cuenta de proveedores** por CCI antes de pagar.
 5. **Posición de caja**: saldos, ingresos del día y cuentas por cobrar por antigüedad.
 
+## Stack
+
+- **API:** Node + TypeScript + Fastify + Prisma, REST versionado en `/api/v1` con contrato OpenAPI.
+- **Web:** Angular (standalone + signals) + Tailwind.
+- **Seguridad:** helmet (CSP, HSTS), CORS con lista blanca, rate limit, validación con Zod, JWT con roles y auditoría. Sentry opcional sin datos personales. Detalle en [CLAUDE.md](CLAUDE.md#seguridad-amenaza--control).
+
 ## Requisitos
 
-- Node.js 20 o superior
+- Node.js 22.12 o superior (recomendado 24 LTS)
 - npm 10 o superior
 
 ## Inicio rápido
@@ -26,25 +32,27 @@ npm run seed
 npm run dev
 ```
 
-- Web: http://localhost:5173
-- API: http://localhost:4000/api/salud
+- Web: http://localhost:4200
+- API: http://localhost:4000/api/v1/salud
+- Contrato OpenAPI: http://localhost:4000/api/docs
 
 ## Scripts
 
-| Script              | Descripción                           |
-| ------------------- | ------------------------------------- |
-| `npm run dev`       | Levanta API y web en modo desarrollo  |
-| `npm test`          | Ejecuta los tests (Vitest)            |
-| `npm run seed`      | Carga datos semilla                   |
-| `npm run lint`      | Revisa el código con ESLint           |
+| Script              | Descripción                            |
+| ------------------- | -------------------------------------- |
+| `npm run dev`       | Levanta API y web en modo desarrollo   |
+| `npm test`          | Ejecuta los tests (Vitest)             |
+| `npm run seed`      | Carga datos semilla                    |
+| `npm run lint`      | Revisa el código con ESLint            |
 | `npm run typecheck` | Verifica tipos en todos los workspaces |
+| `npm run build`     | Compila API y web para producción      |
 
 ## Estructura
 
 ```
 apps/
   api/   Fastify + Prisma + TypeScript
-  web/   React + Vite + Tailwind
+  web/   Angular + Tailwind
 docs/
   contrato-api-bancaria.yaml   Contrato PROVISIONAL propio (no es la API oficial del BCP)
 ```

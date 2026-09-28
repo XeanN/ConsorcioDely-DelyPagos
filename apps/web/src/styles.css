@@ -3,7 +3,3 @@
 @theme {
   --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
 }
-
-body {
-  @apply bg-slate-100 text-slate-900 antialiased;
-}
