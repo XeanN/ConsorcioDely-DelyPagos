@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.claude/settings.local.json
+datos/h2h/entrada/*
+!datos/h2h/entrada/.gitkeep
