@@ -14,6 +14,8 @@ import {
 } from 'fastify-type-provider-zod';
 import type { Config } from './config.js';
 import type { BaseDatos } from './db/prisma.js';
+import { BusEventos } from './eventos/bus.js';
+import { rutasMovimientos } from './rutas/movimientos.js';
 import { rutasAuditoria } from './rutas/auditoria.js';
 import { rutasAuth } from './rutas/auth.js';
 import { rutasSistema } from './rutas/sistema.js';
@@ -21,6 +23,7 @@ import { rutasUsuarios } from './rutas/usuarios.js';
 
 export interface Dependencias {
   db?: BaseDatos;
+  bus?: BusEventos;
 }
 
 export async function construirApp(config: Config, dependencias: Dependencias = {}) {
@@ -105,6 +108,13 @@ export async function construirApp(config: Config, dependencias: Dependencias = 
     await app.register(rutasAuth(db, configAuth), { prefix: '/api/v1/auth' });
     await app.register(rutasAuditoria(db, configAuth.JWT_SECRETO), { prefix: '/api/v1/auditoria' });
     await app.register(rutasUsuarios(db, configAuth.JWT_SECRETO), { prefix: '/api/v1/usuarios' });
+    await app.register(
+      rutasMovimientos(db, dependencias.bus ?? new BusEventos(), {
+        secreto: configAuth.JWT_SECRETO,
+        minutosConexion: config.ACCESO_MINUTOS,
+      }),
+      { prefix: '/api/v1' },
+    );
   }
 
   return app;

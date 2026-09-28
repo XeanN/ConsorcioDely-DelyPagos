@@ -39,7 +39,9 @@ export const routes: Routes = [
         canActivate: [rolGuard],
         data: { roles: modulo.roles, modulo: modulo.ruta },
         loadComponent: () =>
-          import('./paginas/en-construccion/en-construccion').then((m) => m.EnConstruccion),
+          modulo.ruta === 'monitor'
+            ? import('./paginas/monitor/monitor').then((m) => m.Monitor)
+            : import('./paginas/en-construccion/en-construccion').then((m) => m.EnConstruccion),
       })),
     ],
   },

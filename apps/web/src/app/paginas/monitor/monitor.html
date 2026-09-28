@@ -1,0 +1,212 @@
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <h2 class="text-2xl font-bold text-slate-900">Monitor de movimientos</h2>
+  <p class="flex items-center gap-2 text-sm font-medium" role="status" aria-live="polite">
+    @switch (conexion()) {
+      @case ('en-vivo') {
+        <span class="relative flex h-3 w-3">
+          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex h-3 w-3 rounded-full bg-emerald-500"></span>
+        </span>
+        <span class="text-emerald-800">En vivo</span>
+      }
+      @case ('desconectado') {
+        <span class="h-3 w-3 rounded-full bg-slate-400"></span><span class="text-slate-600">Sin conexión</span>
+      }
+      @default {
+        <span class="h-3 w-3 animate-pulse rounded-full bg-amber-500"></span>
+        <span class="text-amber-800">Conectando…</span>
+      }
+    }
+  </p>
+</div>
+
+<!-- Búsqueda rápida del cajero -->
+<section class="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="titulo-busqueda">
+  <label id="titulo-busqueda" for="buscar-monto" class="block text-base font-semibold text-slate-900">
+    ¿Llegó un pago? Digite el monto
+  </label>
+  <div class="mt-2 flex max-w-md items-center rounded-lg border-2 border-slate-400 bg-white focus-within:border-slate-900">
+    <span class="pl-4 text-2xl font-semibold text-slate-500" aria-hidden="true">S/</span>
+    <input
+      id="buscar-monto"
+      type="text"
+      inputmode="decimal"
+      autocomplete="off"
+      placeholder="350"
+      class="w-full bg-transparent px-3 py-3 text-3xl font-bold text-black placeholder:text-slate-300 focus:outline-none"
+      [ngModel]="textoBusqueda()"
+      (ngModelChange)="buscarMonto($event)"
+    />
+  </div>
+
+  @if (montoBuscado(); as buscado) {
+    <div class="mt-4" aria-live="polite">
+      @if (coincidencias().length > 0) {
+        <div class="rounded-lg border border-emerald-300 bg-emerald-50 p-4">
+          <p class="text-lg font-bold text-emerald-900">
+            ✓ Sí llegó: {{ coincidencias().length }} {{ coincidencias().length === 1 ? 'abono' : 'abonos' }} de
+            {{ monto(buscado) }} hoy
+          </p>
+          <ul class="mt-2 divide-y divide-emerald-200">
+            @for (m of coincidencias(); track m.id) {
+              <li class="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm" [class.bg-emerald-100]="nuevos().has(m.id)">
+                <span class="font-mono font-semibold text-slate-900">{{ hora(m.fechaHora) }}</span>
+                <span class="rounded-full px-2 py-0.5 text-xs font-semibold" [class]="canal(m.canal).clase">{{ canal(m.canal).etiqueta }}</span>
+                <span class="text-slate-800">{{ m.ordenanteNombre ?? 'Sin nombre del ordenante' }}</span>
+                <span class="text-slate-500">Op. {{ m.numeroOperacion }}</span>
+              </li>
+            }
+          </ul>
+        </div>
+      } @else if (!buscando()) {
+        <div class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+          <p class="text-lg font-bold">Aún no llega un abono de {{ monto(buscado) }} hoy.</p>
+          <p class="text-sm">Deje esta pantalla abierta: aparecerá aquí en cuanto llegue.</p>
+        </div>
+      }
+    </div>
+  }
+</section>
+
+<!-- Totales del día -->
+<section class="mt-5" aria-label="Totales por canal">
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h3 class="text-sm font-semibold tracking-wide text-slate-600 uppercase">
+      Totales {{ esHoy() ? 'de hoy' : 'del ' + filtros().fecha }}
+    </h3>
+    <p class="text-sm text-slate-700">
+      @for (t of resumen()?.totales ?? []; track t.moneda) {
+        <span class="ml-4"><strong class="text-lg text-slate-900">{{ monto(t.total, t.moneda) }}</strong> en {{ t.cantidad }} abonos</span>
+      }
+    </p>
+  </div>
+  <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    @for (c of resumenPorCanal(); track c.valor) {
+      <button
+        type="button"
+        class="rounded-xl border bg-white p-4 text-left shadow-sm transition hover:border-slate-400"
+        [class.border-slate-900]="filtros().canal === c.valor"
+        [class.border-slate-200]="filtros().canal !== c.valor"
+        (click)="cambiarFiltro('canal', filtros().canal === c.valor ? '' : c.valor)"
+        [attr.aria-pressed]="filtros().canal === c.valor"
+      >
+        <span class="rounded-full px-2 py-0.5 text-xs font-semibold" [class]="c.clase">{{ c.etiqueta }}</span>
+        <p class="mt-2 text-xl font-bold text-slate-900">{{ monto(c.pen?.total ?? 0) }}</p>
+        @if (c.usd) {
+          <p class="text-sm font-semibold text-slate-700">{{ monto(c.usd.total, 'USD') }}</p>
+        }
+        <p class="text-xs text-slate-500">{{ c.cantidad }} {{ c.cantidad === 1 ? 'abono' : 'abonos' }}</p>
+      </button>
+    }
+  </div>
+</section>
+
+<!-- Filtros -->
+<section class="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="Filtros">
+  <div>
+    <label for="f-fecha" class="mb-1 block text-xs font-semibold text-slate-700">Fecha</label>
+    <input id="f-fecha" type="date" [max]="hoy"
+      class="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-black"
+      [ngModel]="filtros().fecha" (ngModelChange)="$event && cambiarFiltro('fecha', $event)" />
+  </div>
+  <div>
+    <label for="f-cuenta" class="mb-1 block text-xs font-semibold text-slate-700">Cuenta</label>
+    <select id="f-cuenta" class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-black"
+      [ngModel]="filtros().cuentaId" (ngModelChange)="cambiarFiltro('cuentaId', $event)">
+      <option value="">Todas</option>
+      @for (c of cuentas(); track c.id) {
+        <option [value]="c.id">{{ c.banco }} {{ c.moneda }} · {{ c.numero }}</option>
+      }
+    </select>
+  </div>
+  <div>
+    <label for="f-canal" class="mb-1 block text-xs font-semibold text-slate-700">Canal</label>
+    <select id="f-canal" class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-black"
+      [ngModel]="filtros().canal" (ngModelChange)="cambiarFiltro('canal', $event)">
+      <option value="">Todos</option>
+      @for (c of canales; track c.valor) {
+        <option [value]="c.valor">{{ c.etiqueta }}</option>
+      }
+    </select>
+  </div>
+  <div>
+    <label for="f-estado" class="mb-1 block text-xs font-semibold text-slate-700">Estado</label>
+    <select id="f-estado" class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-black"
+      [ngModel]="filtros().estado" (ngModelChange)="cambiarFiltro('estado', $event)">
+      <option value="">Todos</option>
+      @for (e of estados; track e.valor) {
+        <option [value]="e.valor">{{ e.etiqueta }}</option>
+      }
+    </select>
+  </div>
+  <div class="min-w-48 flex-1">
+    <label for="f-texto" class="mb-1 block text-xs font-semibold text-slate-700">Ordenante, referencia u operación</label>
+    <input id="f-texto" type="search" placeholder="p. ej. QUISPE o F001-2345"
+      class="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-black"
+      [ngModel]="filtros().q" (ngModelChange)="cambiarFiltro('q', $event)" />
+  </div>
+  <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100" (click)="limpiarFiltros()">
+    Limpiar
+  </button>
+</section>
+
+@if (error(); as mensaje) {
+  <div role="alert" class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ mensaje }}</div>
+}
+
+<!-- Lista de movimientos -->
+<div class="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+  <table class="min-w-full text-left text-sm">
+    <thead class="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-600 uppercase">
+      <tr>
+        <th scope="col" class="px-4 py-3">Hora</th>
+        <th scope="col" class="px-4 py-3 text-right">Monto</th>
+        <th scope="col" class="px-4 py-3">Canal</th>
+        <th scope="col" class="px-4 py-3">Ordenante</th>
+        <th scope="col" class="px-4 py-3">Referencia</th>
+        <th scope="col" class="px-4 py-3">Cuenta</th>
+        <th scope="col" class="px-4 py-3">Estado</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      @for (m of movimientos(); track m.id) {
+        <tr class="transition-colors duration-1000" [class.bg-emerald-50]="nuevos().has(m.id)">
+          <td class="px-4 py-3 font-mono whitespace-nowrap text-slate-800">
+            @if (nuevos().has(m.id)) {
+              <span class="mr-1 rounded bg-emerald-600 px-1.5 py-0.5 font-sans text-[10px] font-bold text-white">NUEVO</span>
+            }
+            {{ hora(m.fechaHora) }}
+          </td>
+          <td class="px-4 py-3 text-right text-base font-bold whitespace-nowrap text-slate-900">{{ monto(m.monto, m.moneda) }}</td>
+          <td class="px-4 py-3">
+            <span class="rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap" [class]="canal(m.canal).clase">{{ canal(m.canal).etiqueta }}</span>
+          </td>
+          <td class="px-4 py-3">
+            <p class="font-medium text-slate-900">{{ m.ordenanteNombre ?? '—' }}</p>
+            @if (m.ordenanteNumeroDoc) {
+              <p class="text-xs text-slate-500">{{ m.ordenanteTipoDoc }} {{ m.ordenanteNumeroDoc }}</p>
+            }
+          </td>
+          <td class="px-4 py-3 text-slate-700">{{ m.referencia ?? '—' }}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ cuentaDe(m.cuentaId) }}</td>
+          <td class="px-4 py-3">
+            <span class="rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap" [class]="estado(m.estado).clase">{{ estado(m.estado).etiqueta }}</span>
+          </td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="7" class="px-4 py-10 text-center text-slate-500">
+            {{ cargando() ? 'Cargando…' : 'No hay abonos con estos filtros.' }}
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+@if (cursor()) {
+  <div class="mt-3 text-center">
+    <button type="button" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-100" (click)="cargarMas()">
+      Cargar más
+    </button>
+  </div>
+}

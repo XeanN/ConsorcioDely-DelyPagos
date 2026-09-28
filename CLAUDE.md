@@ -163,6 +163,7 @@ Implementaciones:
 - F6: Módulo 4 (validación de proveedores).
 - F7: Módulo 5 (posición de caja).
 - F8: Modo presentación, stubs `BcpRestProvider` y `BcpH2HProvider`, guía de despliegue con Cloudflare y README con instrucciones de demo.
+- F9: Centro de bancos. Tras el login, una tarjeta por banco (BCP, BBVA, Interbank, Scotiabank, BanBif, etc.). Al entrar, solo las herramientas que ese banco ofrece según su adaptador: cada `BankProvider` declara sus **capacidades** (movimientos, saldos, validación de CCI, notificación push, archivos H2H…). Bancos sin convenio se muestran como "Simulado / pendiente de convenio". Varios proveedores activos a la vez (registro por banco en lugar de un único `BANK_PROVIDER`). El monitor y la conciliación siguen agregando todos los bancos: el cajero nunca elige banco para saber si llegó un pago.
 
 ## Pendientes que dependen del BCP (no bloquean la demo)
 - Documentación oficial, credenciales y sandbox (las gestiona Dely con su ejecutivo de banca empresas).
