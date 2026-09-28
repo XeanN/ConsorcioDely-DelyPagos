@@ -132,6 +132,10 @@ components:
             tipoDoc: { type: string, nullable: true, enum: [DNI, RUC, CE] }
             numeroDoc: { type: string, nullable: true }
             bancoOrigen: { type: string, nullable: true }
+            cuentaOrigen:
+              type: string
+              nullable: true
+              description: Número o CCI de la cuenta desde la que se pagó (puede no llegar en Yape/Plin)
         referencia: { type: string, nullable: true, example: 'PAGO F001-2345' }
     ValidacionCuenta:
       type: object

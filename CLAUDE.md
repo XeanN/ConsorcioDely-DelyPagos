@@ -16,13 +16,31 @@
 6. Toda confirmación manual de un pago queda registrada en un log de auditoría (usuario, fecha, movimiento, comprobante).
 7. Código, nombres de dominio y UI en español. Montos en PEN (formato S/ 1,234.50) con soporte USD.
 8. Git: NUNCA añadir en commits, PRs, README ni comentarios de código líneas como "Co-Authored-By: Claude", "Generated with Claude Code", "Claude-Session:" ni ninguna mención a IA o asistentes. Los mensajes de commit son breves, en español y en estilo convencional (feat:, fix:, refactor:, test:, docs:).
+9. Seguridad desde el inicio: ningún endpoint de negocio sin autenticación y rol. Toda entrada se valida con esquema en la API. Nunca SQL construido con strings (`$queryRawUnsafe` prohibido). Ver sección "Seguridad".
 
 ## Stack
 - Monorepo con npm workspaces: `apps/api` y `apps/web`.
-- API: Node 20 + TypeScript + Fastify + Prisma. Base de datos SQLite para la demo, preparada para migrar a PostgreSQL cambiando solo `DATABASE_URL` y el provider de Prisma.
+- API: Node 22.12+ (recomendado 24 LTS) + TypeScript + Fastify + Prisma. Base de datos SQLite para la demo, preparada para migrar a PostgreSQL cambiando solo `DATABASE_URL` y el provider de Prisma.
+- Contrato de integración: REST versionado bajo `/api/v1`, documentado con OpenAPI (Swagger UI en `/api/docs`, deshabilitado en producción salvo configuración). Cualquier sistema externo (ERP, otros lenguajes, otros dominios) se integra por este contrato.
 - Tiempo real: Server-Sent Events (SSE) desde la API hacia la web.
-- Web: React + Vite + TypeScript + Tailwind. Diseño sobrio y legible en monitor de caja.
+- Web: Angular (componentes standalone + signals, sin NgModules) + TypeScript estricto + Tailwind. Diseño sobrio y legible en monitor de caja.
+- Observabilidad: Sentry opcional en API y web (se activa solo si hay `SENTRY_DSN`), sin datos personales.
 - Tests: Vitest. El motor de conciliación debe tener cobertura alta.
+
+## Seguridad (amenaza → control)
+- **Inyección SQL** → solo Prisma con consultas parametrizadas; validación de toda entrada con Zod (tipos, longitudes, formatos: RUC 11, DNI 8, CCI 20 dígitos).
+- **XSS / clickjacking** → sanitización por defecto de Angular (prohibido `bypassSecurityTrust*`), cabeceras con `@fastify/helmet` (CSP estricta, `X-Frame-Options`, `nosniff`, `Referrer-Policy`).
+- **Captura de tráfico (Wireshark, MITM)** → HTTPS obligatorio en todo entorno fuera de localhost, HSTS, cookies `Secure`; conexión a PostgreSQL con TLS; los datos nunca viajan en claro.
+- **Escaneo de puertos (nmap)** → en producción solo se expone 443 a través de Cloudflare (Tunnel o proxy); la base de datos y los puertos internos nunca son públicos.
+- **Fuerza bruta / DoS** → `@fastify/rate-limit` global y más estricto en login; bloqueo temporal de cuenta tras intentos fallidos; Cloudflare WAF y protección DDoS delante.
+- **Robo de sesión / CSRF** → JWT de acceso de vida corta (15 min) en memoria del navegador; refresh token en cookie `HttpOnly; Secure; SameSite=Strict` con rotación. Contraseñas con argon2.
+- **Acceso indebido** → roles `CAJERO`, `TESORERIA`, `ADMIN`, `INTEGRACION` verificados en cada endpoint; guards de ruta en Angular solo como apoyo visual.
+- **Otros dominios y puertos** → CORS con lista blanca (`CORS_ORIGENES`), nunca `*`. Sistemas externos usan OAuth2 client credentials con rol `INTEGRACION`.
+- **Suplantación en integraciones** → webhooks salientes firmados con HMAC-SHA256 (`X-Dely-Firma` + timestamp contra replay).
+- **Fuga de información** → errores genéricos al cliente (sin stack traces); Sentry con `dataCollection` restrictivo (sin usuario, cabeceras, cuerpos, parámetros SQL ni variables locales) y depuración de documentos, nombres, cuentas y montos antes de enviar; logs sin secretos.
+- **Manipulación de registros** → la auditoría es solo de inserción y cada registro encadena el hash del anterior (detecta alteraciones).
+- **Dependencias vulnerables** → `npm audit` en CI y actualizaciones periódicas.
+- **Datos personales** → cumplimiento de la Ley 29733 (Perú): notificaciones a clientes solo con consentimiento registrado.
 
 ## Arquitectura bancaria (adaptador)
 ```ts
@@ -42,13 +60,17 @@ Implementaciones:
 - Se selecciona con la variable `BANK_PROVIDER=mock|bcp-rest|bcp-h2h`. Queda preparado para agregar otros bancos (BBVA, Interbank, etc.) con el mismo contrato.
 
 ## Modelo de dominio (Prisma)
-- `Cliente`: tipoDoc (DNI|RUC), numeroDoc, nombre/razonSocial, tipo (MAYORISTA|MINORISTA|CONSUMIDOR_FINAL), alias (nombres alternativos observados en pagos).
+- `Cliente`: tipoDoc (DNI|RUC), numeroDoc, nombre/razonSocial, tipo (MAYORISTA|MINORISTA|CONSUMIDOR_FINAL), alias (nombres alternativos observados en pagos), teléfono, correo, vendedor asignado, consentimiento de notificaciones.
+- `CuentaOrigenCliente`: clienteId, banco, número o CCI de la cuenta desde la que pagó, veces vista, última vez. Se aprende al conciliar.
+- `Usuario`: nombre, correo, hash de contraseña, rol, teléfono (para avisos a vendedores), activo, intentos fallidos, bloqueado hasta.
 - `Comprobante`: serie-número, clienteId, fecha de emisión, fecha de vencimiento, total, saldo pendiente, moneda, estado (PENDIENTE|PARCIAL|PAGADO).
 - `PedidoCaja`: pedido en mostrador esperando pago (tienda, caja, monto, cliente opcional, creado en). Es el caso más frecuente en tienda.
-- `Movimiento`: id del banco, cuenta, fecha y hora, monto, moneda, canal, nombre del ordenante, documento del ordenante (si viene), referencia/glosa, número de operación.
+- `Movimiento`: id del banco, cuenta, fecha y hora, monto, moneda, canal, nombre del ordenante, documento del ordenante (si viene), cuenta de origen (si viene), referencia/glosa, número de operación.
 - `Conciliacion`: movimientoId, destino (comprobante o pedido), puntaje, estado (CONCILIADO|PROBABLE|SIN_IDENTIFICAR|DESCARTADO), motivos (json), confirmadoPor, confirmadoEn.
 - `Proveedor`: RUC, razón social, CCI registrado, titular esperado.
-- `Alerta` y `Auditoria`.
+- `Alerta` y `Auditoria` (solo inserción, con hash encadenado).
+- `Notificacion`: bandeja de salida (canal, destinatario, plantilla, estado PENDIENTE|ENVIADA|FALLIDA, intentos, error, enviadaEn).
+- `SuscripcionWebhook`: URL destino, eventos, secreto HMAC, activa.
 
 ## Los 5 módulos
 
@@ -59,20 +81,29 @@ Implementaciones:
 
 ### 2. Motor de conciliación automática
 - Cruza cada movimiento contra `PedidoCaja` abiertos (prioridad, ventana de 30 min) y `Comprobante` pendientes.
-- Señales y pesos iniciales (configurables):
-  - Monto exacto: 0.40. Si hay tolerancia de redondeo, puntaje proporcional.
-  - Nombre del ordenante vs cliente o alias: 0.35. Normalizar mayúsculas, quitar tildes y sufijos (S.A.C., E.I.R.L., S.A.) y usar similitud de tokens y trigramas.
-  - Referencia contiene serie-número, RUC o DNI: 0.25. Si esto coincide, sube a CONCILIADO aunque el nombre difiera.
+- Señales y pesos iniciales (configurables; se ajustan con los tests de F3):
+  - Monto exacto: 0.35. Si hay tolerancia de redondeo, puntaje proporcional.
+  - Nombre del ordenante vs cliente o alias: 0.25. Normalizar mayúsculas, quitar tildes y sufijos (S.A.C., E.I.R.L., S.A.) y usar similitud de tokens y trigramas.
+  - Referencia contiene serie-número, RUC o DNI: 0.20. Si esto coincide, sube a CONCILIADO aunque el nombre difiera.
+  - Cuenta de origen ya vista para ese cliente (`CuentaOrigenCliente`): 0.20.
+  - Si el movimiento no trae un dato (p. ej. Yape sin cuenta de origen), esa señal no penaliza: los pesos se renormalizan entre las señales disponibles.
 - Umbrales: ≥ 0.85 → CONCILIADO; 0.60–0.85 → PROBABLE (requiere un clic de confirmación); < 0.60 → SIN_IDENTIFICAR.
 - Regla de seguridad: si dos o más candidatos comparten el mismo monto y puntaje similar, nunca conciliar automáticamente. Marcar PROBABLE y mostrar los candidatos.
 - Pagos parciales de mayoristas: aplicar al comprobante más antiguo del cliente y actualizar el saldo.
-- Al confirmar manualmente un PROBABLE, guardar el nombre del ordenante como alias del cliente para aprender.
+- Al confirmar manualmente un PROBABLE, guardar el nombre del ordenante como alias y la cuenta de origen en `CuentaOrigenCliente` para aprender.
 - Explicabilidad: cada conciliación muestra por qué ("monto exacto + referencia F001-2345").
 
 ### 3. Alertas de pago recibido
 - Notificación en pantalla con sonido en la caja cuando se concilia un pago de un pedido abierto.
 - Panel de alertas para tesorería: pagos SIN_IDENTIFICAR con más de 15 minutos de antigüedad, montos inusualmente altos y pagos duplicados.
-- Interfaz `CanalNotificacion` con implementación en pantalla ahora. WhatsApp Cloud API y correo quedan como stubs para una fase posterior.
+- Aviso de pago conciliado al **vendedor** asignado y al **cliente** (si dio consentimiento) por WhatsApp y/o correo.
+- Interfaz `CanalNotificacion` con implementaciones funcionales desde el inicio:
+  - `CanalPantalla`: evento SSE a la caja.
+  - `CanalWhatsApp`: WhatsApp Cloud API de Meta (mensajes con plantilla aprobada). Se activa con `WHATSAPP_CLOUD_TOKEN` y `WHATSAPP_PHONE_NUMBER_ID`.
+  - `CanalCorreo`: SMTP con nodemailer. Se activa con las variables `SMTP_*`.
+  - Sin credenciales, WhatsApp y correo usan `CanalSimulado`, que guarda el mensaje en la bandeja y se ve en la UI ("mensajes enviados"), para demostrar el flujo completo.
+- Envío asíncrono por la bandeja `Notificacion` (patrón outbox) con reintentos, para que una falla de WhatsApp o del correo nunca bloquee la conciliación.
+- Webhooks salientes firmados (`pago.conciliado`, `alerta.creada`) para que otros sistemas se enteren.
 
 ### 4. Validación de cuenta de proveedores
 - Antes de registrar o pagar a un proveedor, consultar `validarCuenta(cci)` y comparar el titular devuelto con la razón social registrada.
@@ -97,17 +128,23 @@ Implementaciones:
 - Datos semilla: unos 60 clientes (20 mayoristas), 150 comprobantes y 3 cuentas (BCP PEN, BCP USD, otro banco PEN).
 
 ## Fases de construcción (ejecutar una por una y validar antes de seguir)
-- F0: Scaffold del monorepo, lint, `.env.example`, scripts `dev`, `test` y `seed`.
-- F1: Esquema Prisma, `BankProvider`, `MockBankProvider` con simulador y seed.
-- F2: Endpoint SSE y módulo 1 (monitor).
-- F3: Motor de conciliación con tests unitarios (casos del modo presentación como tests) y módulo 2.
-- F4: Módulo 3 (alertas).
-- F5: Módulo 4 (validación de proveedores).
-- F6: Módulo 5 (posición de caja).
-- F7: Modo presentación, stubs `BcpRestProvider` y `BcpH2HProvider`, y README con instrucciones de demo.
+- F0: Scaffold del monorepo (API Fastify + web Angular), lint, `.env.example`, scripts `dev`, `test` y `seed`. Base de seguridad: helmet, CORS con lista blanca, rate limit, `/api/v1`, OpenAPI y Sentry opcional.
+- F1: Esquema Prisma, `BankProvider`, `MockBankProvider` con simulador y seed (incluye usuarios de demo por rol).
+- F2: Autenticación JWT + refresh, roles, auditoría con hash encadenado. Login en Angular con guards e interceptor.
+- F3: Endpoint SSE y módulo 1 (monitor).
+- F4: Motor de conciliación con tests unitarios (casos del modo presentación como tests), señal de cuenta de origen y módulo 2.
+- F5: Módulo 3 (alertas, bandeja outbox, WhatsApp, correo y webhooks firmados).
+- F6: Módulo 4 (validación de proveedores).
+- F7: Módulo 5 (posición de caja).
+- F8: Modo presentación, stubs `BcpRestProvider` y `BcpH2HProvider`, guía de despliegue con Cloudflare y README con instrucciones de demo.
 
 ## Pendientes que dependen del BCP (no bloquean la demo)
 - Documentación oficial, credenciales y sandbox (las gestiona Dely con su ejecutivo de banca empresas).
 - Confirmar si el acceso será por API REST, por Host-to-Host o por ambos.
 - Confirmar si hay notificación push (webhook) o solo consulta periódica, y con qué latencia.
-- Confirmar qué campos llegan en movimientos de Yape y Plin (nombre y documento del ordenante).
+- Confirmar qué campos llegan en movimientos de Yape y Plin (nombre, documento y cuenta de origen del ordenante).
+
+## Pendientes que dependen de Dely (no bloquean la demo)
+- Cuenta de WhatsApp Business verificada y plantillas aprobadas por Meta.
+- Servidor SMTP corporativo o servicio de correo transaccional.
+- Dominio y cuenta de Cloudflare para el despliegue.
