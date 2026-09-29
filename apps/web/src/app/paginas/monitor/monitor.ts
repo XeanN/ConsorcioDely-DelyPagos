@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { EnVivo } from '../../core/en-vivo/en-vivo';
+import { ConciliacionApi, type Candidato, type Explicacion } from '../conciliacion/conciliacion-api';
 import { formatearMonto } from '../../compartido/formato';
 import {
   MonitorApi,
@@ -47,6 +48,8 @@ const FILTROS_INICIALES = (): Filtros => ({
 export class Monitor implements OnInit {
   private readonly api = inject(MonitorApi);
   private readonly enVivo = inject(EnVivo);
+  private readonly conciliacion = inject(ConciliacionApi);
+  protected readonly detalle = signal<{ id: string; explicacion: Explicacion | null; mensaje: string } | null>(null);
 
   protected readonly canales = CANALES;
   protected readonly estados = ESTADOS;
@@ -87,6 +90,7 @@ export class Monitor implements OnInit {
   constructor() {
     const cerrar = this.enVivo.conectar('/api/v1/movimientos/en-vivo', (evento, datos) => {
       if (evento === 'movimiento') this.alLlegar(datos as Movimiento);
+      if (evento === 'movimiento-actualizado') this.alActualizarse(datos as Movimiento);
     });
     inject(DestroyRef).onDestroy(() => {
       cerrar();
@@ -160,6 +164,35 @@ export class Monitor implements OnInit {
       this.error.set('No se pudieron cargar los movimientos. Reintente en unos segundos.');
     } finally {
       this.cargando.set(false);
+    }
+  }
+
+  protected async explicar(m: Movimiento): Promise<void> {
+    if (this.detalle()?.id === m.id) {
+      this.detalle.set(null);
+      return;
+    }
+    this.detalle.set({ id: m.id, explicacion: null, mensaje: 'Cargando…' });
+    try {
+      const explicacion = await this.conciliacion.explicar(m.id);
+      this.detalle.set({ id: m.id, explicacion, mensaje: '' });
+    } catch {
+      this.detalle.set({ id: m.id, explicacion: null, mensaje: 'Este pago todavía no se ha conciliado.' });
+    }
+  }
+
+  protected candidatosTexto(candidatos: Candidato[]): string {
+    return candidatos.map((c) => `${c.descripcion} (${Math.round(c.puntaje * 100)}%)`).join(' · ');
+  }
+
+  /** Un pago cambió de estado (p. ej. se concilió): se actualiza donde se esté mostrando. */
+  private alActualizarse(m: Movimiento): void {
+    const reemplazar = (lista: Movimiento[]) => lista.map((x) => (x.id === m.id ? m : x));
+    this.movimientos.update(reemplazar);
+    this.coincidencias.update(reemplazar);
+    if (this.detalle()?.id === m.id) {
+      this.detalle.set(null);
+      void this.explicar(m);
     }
   }
 

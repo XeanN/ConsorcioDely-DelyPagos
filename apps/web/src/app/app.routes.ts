@@ -41,7 +41,9 @@ export const routes: Routes = [
         loadComponent: () =>
           modulo.ruta === 'monitor'
             ? import('./paginas/monitor/monitor').then((m) => m.Monitor)
-            : import('./paginas/en-construccion/en-construccion').then((m) => m.EnConstruccion),
+            : modulo.ruta === 'conciliacion'
+              ? import('./paginas/conciliacion/conciliacion').then((m) => m.Conciliacion)
+              : import('./paginas/en-construccion/en-construccion').then((m) => m.EnConstruccion),
       })),
     ],
   },

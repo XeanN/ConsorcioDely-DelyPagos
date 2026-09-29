@@ -233,6 +233,9 @@ export const rutasMovimientos =
         const dejarDeEscuchar = bus.on('movimiento.registrado', (m) =>
           enviar('movimiento', vistaParaRol(m, usuario.rol)),
         );
+        const dejarActualizaciones = bus.on('movimiento.actualizado', (m) =>
+          enviar('movimiento-actualizado', vistaParaRol(m, usuario.rol)),
+        );
         // Comentario periódico: evita que Cloudflare o un proxy corten la conexión inactiva.
         const latido = setInterval(() => salida.write(': latido\n\n'), 25_000);
         const vencimiento = setTimeout(() => {
@@ -245,6 +248,7 @@ export const rutasMovimientos =
           if (cerrada) return;
           cerrada = true;
           dejarDeEscuchar();
+          dejarActualizaciones();
           clearInterval(latido);
           clearTimeout(vencimiento);
           const restantes = (conexiones.get(usuario.id) ?? 1) - 1;

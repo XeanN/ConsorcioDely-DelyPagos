@@ -3,6 +3,8 @@ import type { MovimientoVista } from '../movimientos/vista.js';
 
 export interface EventosDely {
   'movimiento.registrado': MovimientoVista;
+  /** Cambió el estado de conciliación de un movimiento. */
+  'movimiento.actualizado': MovimientoVista;
 }
 
 type Oyente<K extends keyof EventosDely> = (datos: EventosDely[K]) => void;

@@ -19,7 +19,7 @@ export function crearProveedorBancario(config: Config, opciones: OpcionesProveed
         // El historial ya lo cargó el seed; en ejecución solo llegan abonos nuevos.
         historialDias: 0,
         obtenerPagosEsperados: opciones.obtenerPagosEsperados,
-        probabilidadPagoEsperado: 0.35,
+        probabilidadPagoEsperado: 0.5,
       });
     case 'bcp-rest':
     case 'bcp-h2h':

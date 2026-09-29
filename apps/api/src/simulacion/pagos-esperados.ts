@@ -24,8 +24,9 @@ export function crearFuentePagosEsperados(db: BaseDatos, semilla = Date.now()) {
   const a = new Aleatorio(semilla);
   return async (): Promise<PagoEsperado[]> => {
     const [pedidos, comprobantes] = await Promise.all([
+      // Solo pedidos recientes: el cliente paga mientras espera en caja.
       db.pedidoCaja.findMany({
-        where: { estado: 'ABIERTO' },
+        where: { estado: 'ABIERTO', creadoEn: { gte: new Date(Date.now() - 25 * 60_000) } },
         include: { cliente: { select: { nombre: true } } },
         take: 20,
       }),
@@ -64,6 +65,8 @@ export function crearFuentePagosEsperados(db: BaseDatos, semilla = Date.now()) {
       };
     });
 
-    return [...dePedidos, ...deComprobantes];
+    // Si hay clientes esperando en caja, lo más probable es que el próximo abono sea de ellos.
+    if (dePedidos.length > 0 && a.probabilidad(0.75)) return dePedidos;
+    return deComprobantes;
   };
 }

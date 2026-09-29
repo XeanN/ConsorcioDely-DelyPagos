@@ -9,6 +9,11 @@ updates:
       day: monday
       timezone: America/Lima
     open-pull-requests-limit: 5
+    # Solo actualizaciones menores y de parche. Las mayores (pueden romper) se hacen
+    # a mano y planificadas. Las alertas de seguridad llegan igual, sin importar esto.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       angular:
         patterns: ['@angular/*', '@angular-devkit/*']

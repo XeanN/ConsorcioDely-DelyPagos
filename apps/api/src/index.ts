@@ -1,4 +1,5 @@
-import { cargarConfig } from './config.js';
+import { cargarConfig, configMotor } from './config.js';
+import { ServicioConciliacion } from './conciliacion/servicio-conciliacion.js';
 import { iniciarSentry } from './instrumentacion.js';
 import { crearBaseDatos } from './db/prisma.js';
 import { crearProveedorBancario } from './banco/crear-proveedor.js';
@@ -20,6 +21,14 @@ const banco = crearProveedorBancario(config, {
   obtenerPagosEsperados: config.BANK_PROVIDER === 'mock' ? crearFuentePagosEsperados(db) : undefined,
 });
 const ingesta = new IngestaMovimientos(db, banco, bus, app.log);
+
+// Cada abono que llega se concilia automáticamente.
+const conciliacion = new ServicioConciliacion(db, bus, configMotor(config), app.log);
+bus.on('movimiento.registrado', (m) => {
+  void conciliacion
+    .conciliarMovimiento(m.id)
+    .catch((error: unknown) => app.log.error({ err: error, movimientoId: m.id }, 'No se pudo conciliar'));
+});
 
 app.addHook('onClose', async () => {
   ingesta.detener();
