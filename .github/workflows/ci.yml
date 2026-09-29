@@ -3,9 +3,9 @@
 # cambio malicioso en la etiqueta no llegue al CI. Dependabot las mantiene actualizadas.
 name: CI
 
+# Solo en pull requests (el ruleset de master exige que pase) y a mano desde Actions.
+# No corre de nuevo al entrar a master: sería repetir lo que ya se validó en el PR.
 on:
-  push:
-    branches: [master]
   pull_request:
     branches: [master]
   workflow_dispatch:
