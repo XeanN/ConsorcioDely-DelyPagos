@@ -73,6 +73,15 @@ const esquemaConfig = z
     LOGIN_LIMITE_POR_MINUTO: numero(10),
     /** Usuarios de demo: "usuario:clave,usuario:clave". El rol sale del prefijo (ventas, caja, finanzas, admin). */
     SEED_USUARIOS_DEMO: opcional,
+    // Motor de conciliación (ver CLAUDE.md, módulo 2)
+    CONCILIACION_PESO_MONTO: numero(0.35),
+    CONCILIACION_PESO_NOMBRE: numero(0.25),
+    CONCILIACION_PESO_REFERENCIA: numero(0.2),
+    CONCILIACION_PESO_CUENTA_ORIGEN: numero(0.2),
+    CONCILIACION_UMBRAL_CONCILIADO: numero(0.85),
+    CONCILIACION_UMBRAL_PROBABLE: numero(0.6),
+    CONCILIACION_VENTANA_PEDIDO_MIN: numero(30),
+    CONCILIACION_TOLERANCIA_MONTO: numero(1),
     SENTRY_DSN: opcional,
     SENTRY_DSN_WEB: opcional,
     SENTRY_ENTORNO: z.string().default('desarrollo'),
@@ -83,6 +92,23 @@ const esquemaConfig = z
   });
 
 export type Config = z.infer<typeof esquemaConfig>;
+
+/** Parámetros del motor de conciliación tomados de la configuración. */
+export function configMotor(c: Config) {
+  return {
+    pesos: {
+      monto: c.CONCILIACION_PESO_MONTO,
+      nombre: c.CONCILIACION_PESO_NOMBRE,
+      referencia: c.CONCILIACION_PESO_REFERENCIA,
+      cuenta: c.CONCILIACION_PESO_CUENTA_ORIGEN,
+    },
+    umbralConciliado: c.CONCILIACION_UMBRAL_CONCILIADO,
+    umbralProbable: c.CONCILIACION_UMBRAL_PROBABLE,
+    ventanaPedidoMin: c.CONCILIACION_VENTANA_PEDIDO_MIN,
+    toleranciaMonto: c.CONCILIACION_TOLERANCIA_MONTO,
+    margenEmpate: 0.1,
+  };
+}
 
 export function cargarConfig(entorno: NodeJS.ProcessEnv = process.env): Config {
   const resultado = esquemaConfig.safeParse(entorno);

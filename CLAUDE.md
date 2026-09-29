@@ -64,6 +64,12 @@
 - Unitarios: sin base de datos.
 - Integración (`*.int.test.ts`): contra `TEST_DATABASE_URL`, una base exclusiva de pruebas (`dely_pruebas` en Neon) que se vacía en cada ejecución. Si no está configurada, se omiten. Nunca apuntar a la base de la demo (el helper lo impide).
 
+## Flujo de trabajo con Git (modo estricto)
+- `master` está protegida por un ruleset sin excepciones: no se puede hacer push directo, force push ni borrarla. Todo cambio entra por pull request con squash merge, historial lineal y el check `Resumen y tiempos` en verde.
+- Cada fase o cambio va en su propia rama (`feat/…`, `fix/…`, `chore/…`, `docs/…`) creada desde `master` actualizada. Nunca hacer push a `master`.
+- El título del PR sigue la convención de commits (se convierte en el mensaje del squash) y cumple la regla 8.
+- El merge lo hace el usuario en GitHub tras revisar el CI.
+
 ## CI (GitHub Actions)
 - `.github/workflows/ci.yml` en cada push y pull request a `master`: lint y tipos, tests de la API (con PostgreSQL 17 temporal como servicio; sin credenciales de Neon en GitHub), tests de la web, build (artefacto descargable 7 días), seguridad (`npm audit` altas/críticas, gitleaks sobre todo el historial, commits sin menciones a IA) y una tabla de tiempos por etapa en el resumen de la ejecución.
 - Acciones de terceros fijadas por hash de commit; Dependabot (`.github/dependabot.yml`) propone actualizaciones semanales como pull requests.
@@ -124,6 +130,8 @@ Implementaciones:
 - Pagos parciales de mayoristas: aplicar al comprobante más antiguo del cliente y actualizar el saldo.
 - Al confirmar manualmente un PROBABLE, guardar el nombre del ordenante como alias y la cuenta de origen en `CuentaOrigenCliente` para aprender.
 - Explicabilidad: cada conciliación muestra por qué ("monto exacto + referencia F001-2345").
+- Implementación (F4): motor puro en `apps/api/src/conciliacion/motor.ts` (sin base de datos, cubierto por tests con los escenarios de la presentación) y `ServicioConciliacion` que aplica la decisión en una transacción: actualizaciones condicionadas para que dos abonos no paguen el mismo pedido o saldo, aprendizaje de alias y cuentas de origen, auditoría de conciliaciones automáticas, confirmaciones y descartes. Reglas adicionales: un comprobante nunca se concilia solo por monto; un pago parcial o de un posible familiar solo es automático con identidad fuerte (referencia, documento o cuenta conocida); pedidos fuera de la ventana no son candidatos.
+- Los pedidos en caja se registran desde la pantalla Conciliación (en producción podrán llegar del ERP por la API). La bandeja permite confirmar candidatos, asignar manualmente (buscando cliente, documento o F001-2345) y descartar pagos que no son ventas.
 
 ### 3. Alertas de pago recibido
 - Notificación en pantalla con sonido en la caja cuando se concilia un pago de un pedido abierto.

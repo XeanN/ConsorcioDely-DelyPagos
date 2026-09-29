@@ -12,7 +12,8 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
-import type { Config } from './config.js';
+import { configMotor, type Config } from './config.js';
+import { rutasConciliacion } from './rutas/conciliacion.js';
 import type { BaseDatos } from './db/prisma.js';
 import { BusEventos } from './eventos/bus.js';
 import { rutasMovimientos } from './rutas/movimientos.js';
@@ -108,8 +109,12 @@ export async function construirApp(config: Config, dependencias: Dependencias = 
     await app.register(rutasAuth(db, configAuth), { prefix: '/api/v1/auth' });
     await app.register(rutasAuditoria(db, configAuth.JWT_SECRETO), { prefix: '/api/v1/auditoria' });
     await app.register(rutasUsuarios(db, configAuth.JWT_SECRETO), { prefix: '/api/v1/usuarios' });
+    const bus = dependencias.bus ?? new BusEventos();
+    await app.register(rutasConciliacion(db, bus, configAuth.JWT_SECRETO, configMotor(config)), {
+      prefix: '/api/v1',
+    });
     await app.register(
-      rutasMovimientos(db, dependencias.bus ?? new BusEventos(), {
+      rutasMovimientos(db, bus, {
         secreto: configAuth.JWT_SECRETO,
         minutosConexion: config.ACCESO_MINUTOS,
       }),
