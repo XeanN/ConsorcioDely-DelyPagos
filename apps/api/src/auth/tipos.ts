@@ -10,6 +10,8 @@ export interface UsuarioSesion {
   rol: Rol;
   /** Mientras sea true, solo puede cambiar su contraseña o salir. */
   debeCambiarClave: boolean;
+  /** Solo sistemas (rol INTEGRACION): permisos concedidos, p. ej. "pedidos". */
+  alcances?: string[];
 }
 
 declare module 'fastify' {

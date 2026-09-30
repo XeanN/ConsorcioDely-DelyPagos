@@ -14,7 +14,7 @@ import {
 const PESTANAS: { estado: EstadoConciliacion; etiqueta: string; clase: string }[] = [
   { estado: 'PROBABLE', etiqueta: 'Por confirmar', clase: 'bg-amber-100 text-amber-900' },
   { estado: 'SIN_IDENTIFICAR', etiqueta: 'Sin identificar', clase: 'bg-red-100 text-red-800' },
-  { estado: 'CONCILIADO', etiqueta: 'Conciliados hoy', clase: 'bg-emerald-100 text-emerald-800' },
+  { estado: 'CONCILIADO', etiqueta: 'Conciliados', clase: 'bg-emerald-100 text-emerald-800' },
   { estado: 'DESCARTADO', etiqueta: 'Descartados', clase: 'bg-slate-200 text-slate-600' },
 ];
 
@@ -42,7 +42,11 @@ export class BandejaConciliacion implements OnInit {
   protected readonly ocupado = signal(false);
   protected readonly aviso = signal<string | null>(null);
   protected readonly error = signal<string | null>(null);
-  protected readonly abierto = signal<{ id: string; modo: 'buscar' | 'descartar' } | null>(null);
+  protected readonly abierto = signal<{ id: string; modo: 'buscar' | 'descartar' | 'revertir' } | null>(null);
+  /** Día que se revisa. Vacío = todos los días (solo para las bandejas de pendientes). */
+  protected fecha = hoyLima();
+  protected readonly hoy = hoyLima();
+  protected motivoReversion = '';
   protected readonly resultados = signal<DestinoBuscado[]>([]);
   protected textoBusqueda = '';
   protected motivoDescarte = '';
@@ -62,8 +66,8 @@ export class BandejaConciliacion implements OnInit {
   async recargar(): Promise<void> {
     try {
       const estado = this.estado();
-      const fecha = estado === 'CONCILIADO' || estado === 'DESCARTADO' ? hoyLima() : undefined;
-      this.items.set(await this.api.bandeja(estado, fecha));
+      const historial = estado === 'CONCILIADO' || estado === 'DESCARTADO';
+      this.items.set(await this.api.bandeja(estado, this.fecha || (historial ? hoyLima() : undefined)));
     } catch (error) {
       this.error.set(mensajeError(error));
     } finally {
@@ -84,7 +88,22 @@ export class BandejaConciliacion implements OnInit {
     );
   }
 
-  protected abrir(id: string, modo: 'buscar' | 'descartar'): void {
+  protected async cambiarFecha(fecha: string): Promise<void> {
+    this.fecha = fecha;
+    this.cargando.set(true);
+    await this.recargar();
+  }
+
+  protected async revertir(item: ItemBandeja): Promise<void> {
+    if (this.motivoReversion.trim().length < 5) return;
+    await this.ejecutar(
+      () => this.api.revertir(item.id, this.motivoReversion.trim()),
+      'Deshecho: el pago volvió a "Sin identificar" para asignarlo correctamente.',
+    );
+  }
+
+  protected abrir(id: string, modo: 'buscar' | 'descartar' | 'revertir'): void {
+    this.motivoReversion = '';
     this.abierto.set({ id, modo });
     this.resultados.set([]);
     this.textoBusqueda = '';
@@ -102,8 +121,9 @@ export class BandejaConciliacion implements OnInit {
 
   protected async procesar(): Promise<void> {
     await this.ejecutar(async () => {
-      const { procesados } = await this.api.procesar(hoyLima());
-      this.aviso.set(`${procesados} pagos pendientes procesados.`);
+      const dia = this.fecha || hoyLima();
+      const { procesados } = await this.api.procesar(dia);
+      this.aviso.set(`${procesados} pagos pendientes del ${dia} procesados.`);
     });
   }
 

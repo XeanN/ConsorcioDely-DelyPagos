@@ -289,4 +289,84 @@ describe.skipIf(!URL_PRUEBAS)('conciliación (integración)', () => {
     expect(await servicio.conciliarMovimiento(m.id)).toBeNull();
     expect(await db.conciliacion.count({ where: { movimientoId: m.id } })).toBe(1);
   });
+
+  describe('deshacer', () => {
+    const revertir = async (id: string, usuario = 'finanzas1') =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/conciliaciones/${id}/revertir`,
+        headers: { authorization: `Bearer ${await token(usuario)}` },
+        payload: { motivo: 'Se asignó al pedido equivocado' },
+      });
+
+    beforeEach(async () => {
+      await db.usuario.create({
+        data: { usuario: 'finanzas1', nombre: 'Finanzas 1', rol: 'FINANZAS', hashClave: await hashearClave(CLAVE) },
+      });
+    });
+
+    it('devuelve el pedido a "esperando pago" y el pago a la bandeja', async () => {
+      const pedido = await db.pedidoCaja.create({ data: { monto: '33.00', tienda: 'T', caja: 'Caja 1' } });
+      const m = await llega({ monto: 33 });
+      const c = await conciliacionDe(m.id);
+      expect(c.estado).toBe('CONCILIADO');
+
+      expect((await revertir(c.id)).statusCode).toBe(204);
+      expect((await conciliacionDe(m.id)).estado).toBe('SIN_IDENTIFICAR');
+      expect((await db.pedidoCaja.findUniqueOrThrow({ where: { id: pedido.id } })).estado).toBe('ABIERTO');
+      const a = await db.auditoria.findFirstOrThrow({ where: { accion: 'CONCILIACION_REVERTIDA' } });
+      expect(a.datos).toMatchObject({ motivo: 'Se asignó al pedido equivocado', estadoAnterior: 'CONCILIADO' });
+    });
+
+    it('devuelve el saldo al comprobante y olvida el alias y la cuenta aprendidos por error', async () => {
+      const b = await db.comprobante.create({
+        data: {
+          tipo: 'BOLETA',
+          serie: 'B001',
+          numero: 7000,
+          clienteId: juanId,
+          fechaEmision: new Date(),
+          fechaVencimiento: new Date(),
+          total: '500.00',
+          saldoPendiente: '500.00',
+          moneda: 'PEN',
+        },
+      });
+      const m = await llega({
+        monto: 500,
+        canal: 'TRANSFERENCIA',
+        ordenante: ordenante('PEDRO QUISPE MAMANI', { cuentaOrigen: '191-5555555-0-55' }),
+      });
+      const c = await conciliacionDe(m.id);
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/conciliaciones/${c.id}/confirmar`,
+        headers: { authorization: `Bearer ${await token()}`, origin: ORIGEN },
+        payload: { tipo: 'COMPROBANTE', destinoId: b.id },
+      });
+      expect(await db.aliasCliente.count({ where: { clienteId: juanId } })).toBe(1);
+
+      expect((await revertir(c.id)).statusCode).toBe(204);
+      const despues = await db.comprobante.findUniqueOrThrow({ where: { id: b.id } });
+      expect(despues.estado).toBe('PENDIENTE');
+      expect(Number(despues.saldoPendiente)).toBe(500);
+      expect(await db.aliasCliente.count({ where: { clienteId: juanId } })).toBe(0);
+      expect(await db.cuentaOrigenCliente.count({ where: { clienteId: juanId } })).toBe(0);
+    });
+
+    it('deshace un descarte', async () => {
+      const m = await llega({ monto: 4321 });
+      const c = await conciliacionDe(m.id);
+      await db.conciliacion.update({ where: { id: c.id }, data: { estado: 'DESCARTADO' } });
+      expect((await revertir(c.id)).statusCode).toBe(204);
+      expect((await conciliacionDe(m.id)).estado).toBe('SIN_IDENTIFICAR');
+    });
+
+    it('Caja no puede deshacer y un pago sin resolver no se revierte', async () => {
+      const m = await llega({ monto: 4322 });
+      const c = await conciliacionDe(m.id);
+      expect((await revertir(c.id, 'caja1')).statusCode).toBe(403);
+      expect((await revertir(c.id)).statusCode).toBe(409);
+    });
+  });
 });

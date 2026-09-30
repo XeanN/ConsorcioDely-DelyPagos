@@ -29,6 +29,13 @@ export const routes: Routes = [
         loadComponent: () => import('./paginas/usuarios/usuarios').then((m) => m.Usuarios),
       },
       {
+        path: 'integraciones',
+        title: 'Integraciones · Dely Pagos',
+        canActivate: [rolGuard],
+        data: { roles: ['ADMIN'] },
+        loadComponent: () => import('./paginas/integraciones/integraciones').then((m) => m.Integraciones),
+      },
+      {
         path: '',
         title: 'Inicio · Dely Pagos',
         loadComponent: () => import('./paginas/inicio/inicio').then((m) => m.Inicio),

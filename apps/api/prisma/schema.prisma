@@ -137,6 +137,7 @@ model Usuario {
   actualizadoEn    DateTime  @updatedAt
 
   sesiones              Sesion[]
+  integracionesCreadas  ClienteIntegracion[]
   clientesAsignados     Cliente[]             @relation("VendedorCliente")
   pedidosCreados        PedidoCaja[]
   confirmaciones        Conciliacion[]
@@ -165,6 +166,26 @@ model Sesion {
 
   @@index([usuarioId, revocadaEn])
   @@map("sesiones")
+}
+
+/// Sistema externo (ERP, conector) que usa la API con OAuth2 client credentials.
+/// Del secreto solo se guarda el hash; se muestra una única vez al crearlo.
+model ClienteIntegracion {
+  id            String    @id @default(uuid()) @db.Uuid
+  nombre        String    @db.VarChar(80)
+  clientId      String    @unique @db.VarChar(60)
+  hashSecreto   String
+  /// Permisos: pedidos, comprobantes, movimientos:leer
+  alcances      String[]
+  activo        Boolean   @default(true)
+  ultimoUsoEn   DateTime?
+  creadoPorId   String?   @db.Uuid
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  creadoPor Usuario? @relation(fields: [creadoPorId], references: [id])
+
+  @@map("clientes_integracion")
 }
 
 // ─── Clientes y cartera ────────────────────────────────────
@@ -254,6 +275,8 @@ model Comprobante {
 /// Pedido en mostrador esperando pago. Caso más frecuente en tienda.
 model PedidoCaja {
   id          String       @id @default(uuid()) @db.Uuid
+  /// Id del pedido en el ERP: evita duplicados si el ERP reenvía el mismo pedido.
+  idExterno   String?      @unique @db.VarChar(80)
   tienda      String       @db.VarChar(60)
   caja        String       @db.VarChar(20)
   monto       Decimal      @db.Decimal(14, 2)

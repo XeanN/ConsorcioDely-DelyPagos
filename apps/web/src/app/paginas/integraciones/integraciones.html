@@ -1,0 +1,124 @@
+<h2 class="text-2xl font-bold text-slate-900">Integraciones</h2>
+<p class="mt-1 max-w-3xl text-slate-600">
+  Credenciales para que otros sistemas (por ejemplo, el ERP) envíen pedidos y comprobantes a Dely Pagos. Cada sistema
+  tiene su propio acceso, con permisos mínimos, y se puede revocar en cualquier momento.
+</p>
+
+@if (credencial(); as c) {
+  <section role="alert" class="mt-5 rounded-xl border-2 border-amber-400 bg-amber-50 p-5">
+    <h3 class="font-bold text-amber-950">Credenciales de «{{ c.nombre }}»: cópielas ahora</h3>
+    <p class="mt-1 text-sm text-amber-900">
+      El secreto <strong>no se volverá a mostrar</strong>. Entrégueselo al responsable del sistema por un medio seguro
+      (nunca por WhatsApp ni correo sin cifrar) y guárdelo en su gestor de secretos.
+    </p>
+    <dl class="mt-3 grid gap-2 text-sm">
+      <div>
+        <dt class="font-semibold text-slate-800">client_id</dt>
+        <dd class="font-mono break-all text-black">{{ c.clientId }}</dd>
+      </div>
+      <div>
+        <dt class="font-semibold text-slate-800">client_secret</dt>
+        <dd class="flex flex-wrap items-center gap-2">
+          <span class="font-mono break-all text-black">{{ c.clientSecret }}</span>
+          <button type="button" class="rounded-md border border-slate-400 bg-white px-2 py-1 text-xs font-medium" (click)="copiar(c.clientSecret)">
+            {{ copiado() ? '✓ Copiado' : 'Copiar' }}
+          </button>
+        </dd>
+      </div>
+    </dl>
+    <button type="button" class="mt-4 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white" (click)="credencial.set(null)">
+      Ya lo guardé
+    </button>
+  </section>
+}
+
+<form class="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" (ngSubmit)="crear()">
+  <h3 class="font-semibold text-slate-900">Nueva integración</h3>
+  <div class="mt-3 flex flex-wrap items-start gap-6">
+    <div>
+      <label for="integracion-nombre" class="mb-1 block text-xs font-semibold text-slate-700">Nombre del sistema</label>
+      <input id="integracion-nombre" name="nombre" placeholder="p. ej. ERP Dely" autocomplete="off"
+        class="w-64 rounded-md border border-slate-400 px-2 py-2 text-sm text-black" [(ngModel)]="nombre" />
+    </div>
+    <fieldset>
+      <legend class="mb-1 text-xs font-semibold text-slate-700">Permisos</legend>
+      @for (a of alcancesDisponibles(); track a[0]) {
+        <label class="flex items-center gap-2 text-sm text-slate-800">
+          <input type="checkbox" [checked]="elegidos.has(a[0])" (change)="alternarAlcance(a[0])" />
+          <span class="font-mono text-xs">{{ a[0] }}</span> — {{ a[1] }}
+        </label>
+      }
+    </fieldset>
+  </div>
+  <button type="submit" class="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+    [disabled]="ocupado() || nombre.trim().length < 3 || elegidos.size === 0">
+    Crear credenciales
+  </button>
+</form>
+
+@if (error(); as e) {
+  <p role="alert" class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{{ e }}</p>
+}
+
+<div class="mt-5 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+  <table class="min-w-full text-left text-sm">
+    <thead class="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-600 uppercase">
+      <tr>
+        <th scope="col" class="px-4 py-3">Sistema</th>
+        <th scope="col" class="px-4 py-3">client_id</th>
+        <th scope="col" class="px-4 py-3">Permisos</th>
+        <th scope="col" class="px-4 py-3">Estado</th>
+        <th scope="col" class="px-4 py-3">Último uso</th>
+        <th scope="col" class="px-4 py-3 text-right">Acciones</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      @for (i of integraciones(); track i.id) {
+        <tr [class.opacity-60]="!i.activo">
+          <td class="px-4 py-3 font-medium text-slate-900">{{ i.nombre }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-slate-700">{{ i.clientId }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-slate-700">{{ i.alcances.join(', ') }}</td>
+          <td class="px-4 py-3">
+            <span class="rounded-full px-2 py-0.5 text-xs font-semibold" [class]="i.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'">
+              {{ i.activo ? 'Activa' : 'Revocada' }}
+            </span>
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ fecha(i.ultimoUsoEn) }}</td>
+          <td class="px-4 py-3">
+            @if (confirmando()?.id === i.id) {
+              <div class="flex flex-wrap justify-end gap-2">
+                <span class="text-xs text-slate-700">
+                  {{ confirmando()?.accion === 'revocar' ? '¿Revocar? El sistema perderá el acceso.' : '¿Regenerar? El secreto actual dejará de servir.' }}
+                </span>
+                <button type="button" class="rounded-md bg-red-700 px-2 py-1 text-xs font-semibold text-white" (click)="confirmar(i)">Sí</button>
+                <button type="button" class="rounded-md border border-slate-300 px-2 py-1 text-xs" (click)="confirmando.set(null)">No</button>
+              </div>
+            } @else {
+              <div class="flex flex-wrap justify-end gap-2">
+                @if (i.activo) {
+                  <button type="button" class="rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100" (click)="confirmando.set({ id: i.id, accion: 'regenerar-secreto' })">
+                    Regenerar secreto
+                  </button>
+                  <button type="button" class="rounded-md border border-red-300 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50" (click)="confirmando.set({ id: i.id, accion: 'revocar' })">
+                    Revocar
+                  </button>
+                } @else {
+                  <button type="button" class="rounded-md border border-emerald-300 px-2.5 py-1 text-xs text-emerald-800 hover:bg-emerald-50" (click)="activar(i)">
+                    Activar
+                  </button>
+                }
+              </div>
+            }
+          </td>
+        </tr>
+      } @empty {
+        <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Todavía no hay sistemas conectados.</td></tr>
+      }
+    </tbody>
+  </table>
+</div>
+
+<p class="mt-4 text-sm text-slate-600">
+  Guía para conectar el ERP: <span class="font-mono">docs/integracion-erp.md</span> en el repositorio. Contrato completo de la API en
+  <span class="font-mono">/api/docs</span>.
+</p>

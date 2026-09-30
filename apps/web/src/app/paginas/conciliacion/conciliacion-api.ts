@@ -103,6 +103,10 @@ export class ConciliacionApi {
     return firstValueFrom(this.http.post<void>(`/api/v1/conciliaciones/${conciliacionId}/descartar`, { motivo }));
   }
 
+  revertir(conciliacionId: string, motivo: string) {
+    return firstValueFrom(this.http.post<void>(`/api/v1/conciliaciones/${conciliacionId}/revertir`, { motivo }));
+  }
+
   procesar(fecha: string) {
     return firstValueFrom(this.http.post<{ procesados: number }>('/api/v1/conciliaciones/procesar', { fecha }));
   }

@@ -3,7 +3,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { BaseDatos } from '../db/prisma.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { BusEventos } from '../eventos/bus.js';
-import { crearAutenticador, exigirRol } from '../auth/plugin-auth.js';
+import { crearAutenticador, exigirAcceso } from '../auth/plugin-auth.js';
 import { INCLUIR_VISTA, aVista, vistaParaRol } from '../movimientos/vista.js';
 import { hoyLima, rangoDiaLima } from '../util/fechas.js';
 
@@ -41,7 +41,8 @@ export const rutasMovimientos =
   (db: BaseDatos, bus: BusEventos, opciones: OpcionesMovimientos): FastifyPluginAsyncZod =>
   async (app) => {
     app.addHook('preHandler', crearAutenticador(opciones.secreto));
-    app.addHook('preHandler', exigirRol('CAJA', 'VENTAS', 'FINANZAS'));
+    // Personas por rol; el ERP u otro sistema solo con el alcance "movimientos:leer".
+    app.addHook('preHandler', exigirAcceso(['CAJA', 'VENTAS', 'FINANZAS'], 'movimientos:leer'));
     const comun = { tags: ['movimientos'], security: [{ bearer: [] }] };
 
     app.get(

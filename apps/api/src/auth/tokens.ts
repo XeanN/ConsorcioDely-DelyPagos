@@ -19,6 +19,7 @@ export async function firmarAcceso(
     nom: usuario.nombre,
     rol: usuario.rol,
     dcc: usuario.debeCambiarClave,
+    ...(usuario.alcances ? { alc: usuario.alcances } : {}),
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(usuario.id)
@@ -44,7 +45,9 @@ export async function verificarAcceso(token: string, secreto: string): Promise<U
       typeof payload['usr'] !== 'string' ||
       typeof payload['nom'] !== 'string' ||
       !ROLES.includes(rol as Rol) ||
-      typeof payload['dcc'] !== 'boolean'
+      typeof payload['dcc'] !== 'boolean' ||
+      (payload['alc'] !== undefined &&
+        !(Array.isArray(payload['alc']) && payload['alc'].every((a) => typeof a === 'string')))
     ) {
       return null;
     }
@@ -54,6 +57,7 @@ export async function verificarAcceso(token: string, secreto: string): Promise<U
       nombre: payload['nom'],
       rol: rol as Rol,
       debeCambiarClave: payload['dcc'],
+      ...(Array.isArray(payload['alc']) ? { alcances: payload['alc'] as string[] } : {}),
     };
   } catch {
     return null;

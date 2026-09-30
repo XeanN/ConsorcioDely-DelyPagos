@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
 import { verificarAcceso } from './tokens.js';
-import type { Rol } from './tipos.js';
+import type { Rol, UsuarioSesion } from './tipos.js';
 
 /**
  * Verifica el token Bearer y deja el usuario en `request.usuarioSesion`.
@@ -34,6 +34,37 @@ export function exigirRol(...roles: Rol[]): preHandlerAsyncHookHandler {
       return reply.status(403).send({ error: 'No tiene permiso para esta acción' });
     }
   };
+}
+
+/**
+ * Personas por rol o sistemas externos por alcance. Un sistema (rol INTEGRACION) solo
+ * pasa si su token incluye el alcance pedido; nunca por rol.
+ */
+export function exigirAcceso(roles: Rol[], alcance: string): preHandlerAsyncHookHandler {
+  return async function verificarAcceso(request: FastifyRequest, reply: FastifyReply) {
+    const sesion = request.usuarioSesion;
+    if (sesion?.rol === 'INTEGRACION') {
+      if (!sesion.alcances?.includes(alcance)) {
+        return reply.status(403).send({ error: `La integración no tiene el permiso "${alcance}"` });
+      }
+      return;
+    }
+    const rol = sesion?.rol;
+    if (!rol || (rol !== 'ADMIN' && !roles.includes(rol))) {
+      return reply.status(403).send({ error: 'No tiene permiso para esta acción' });
+    }
+  };
+}
+
+/**
+ * Quién hizo la acción, para guardar y auditar. Los sistemas no son usuarios: se
+ * registran sin usuarioId y con su identificación en los datos.
+ */
+export function actorDe(sesion: UsuarioSesion): { usuarioId: string | null; datos: Record<string, string> } {
+  if (sesion.rol === 'INTEGRACION') {
+    return { usuarioId: null, datos: { integracion: sesion.nombre, clientId: sesion.usuario } };
+  }
+  return { usuarioId: sesion.id, datos: {} };
 }
 
 /**

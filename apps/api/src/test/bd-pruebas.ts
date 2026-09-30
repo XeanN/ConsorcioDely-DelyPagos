@@ -33,5 +33,5 @@ export async function limpiarBaseDatos(db: BaseDatos): Promise<void> {
   await db.$executeRaw`TRUNCATE TABLE auditoria, notificaciones, alertas, conciliaciones,
     movimientos, validaciones_proveedor, proveedores, pedidos_caja, comprobantes,
     cuentas_origen_cliente, alias_cliente, clientes, cuentas_bancarias,
-    suscripciones_webhook, sesiones, usuarios RESTART IDENTITY CASCADE`;
+    suscripciones_webhook, clientes_integracion, sesiones, usuarios RESTART IDENTITY CASCADE`;
 }

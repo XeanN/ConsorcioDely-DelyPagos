@@ -59,6 +59,7 @@
 - Usuarios de demo en `SEED_USUARIOS_DEMO` del `.env` (`usuario:clave,...`, rol por prefijo). Nunca en el código.
 - Sesión: token de acceso de 15 min solo en memoria; refresh token opaco en cookie `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`, rotado en cada uso. Reusar un token rotado revoca todas las sesiones del usuario (margen de 30 s para pestañas simultáneas). En la base solo se guarda el SHA-256 del token.
 - Bloqueo por usuario tras `LOGIN_MAX_INTENTOS` fallos y límite de intentos por IP. Mismo mensaje para usuario inexistente y clave incorrecta.
+- Sistemas externos (ERP): OAuth2 client credentials en `POST /api/v1/oauth/token` (formulario, JSON o Basic). Credenciales en `ClienteIntegracion` (solo hash del secreto, mostrado una vez), gestionadas por ADMIN en la pantalla Integraciones. Token de 15 min con rol `INTEGRACION` y alcances (`pedidos`, `comprobantes`, `movimientos:leer`); `exigirAcceso(roles, alcance)` admite personas por rol o sistemas solo por alcance. Las acciones de un sistema se auditan sin usuarioId y con su nombre y clientId. Guía: `docs/integracion-erp.md`.
 
 ## Tests
 - Unitarios: sin base de datos.
@@ -68,7 +69,7 @@
 - `master` está protegida por un ruleset sin excepciones: no se puede hacer push directo, force push ni borrarla. Todo cambio entra por pull request con squash merge, historial lineal y el check `Resumen y tiempos` en verde.
 - Cada fase o cambio va en su propia rama (`feat/…`, `fix/…`, `chore/…`, `docs/…`) creada desde `master` actualizada. Nunca hacer push a `master`.
 - El título del PR sigue la convención de commits (se convierte en el mensaje del squash) y cumple la regla 8.
-- El merge lo hace el usuario en GitHub tras revisar el CI.
+- El PR se crea con GitHub CLI y se integra solo con auto-merge (squash) cuando el CI pasa; la rama se borra al integrarse.
 
 ## CI (GitHub Actions)
 - `.github/workflows/ci.yml` en cada pull request a `master` (y manual desde Actions; no se repite tras el merge): lint y tipos, tests de la API (con PostgreSQL 17 temporal como servicio; sin credenciales de Neon en GitHub), tests de la web, build (artefacto descargable 7 días), seguridad (`npm audit` altas/críticas, gitleaks sobre todo el historial, commits sin menciones a IA) y una tabla de tiempos por etapa en el resumen de la ejecución.
@@ -131,7 +132,7 @@ Implementaciones:
 - Al confirmar manualmente un PROBABLE, guardar el nombre del ordenante como alias y la cuenta de origen en `CuentaOrigenCliente` para aprender.
 - Explicabilidad: cada conciliación muestra por qué ("monto exacto + referencia F001-2345").
 - Implementación (F4): motor puro en `apps/api/src/conciliacion/motor.ts` (sin base de datos, cubierto por tests con los escenarios de la presentación) y `ServicioConciliacion` que aplica la decisión en una transacción: actualizaciones condicionadas para que dos abonos no paguen el mismo pedido o saldo, aprendizaje de alias y cuentas de origen, auditoría de conciliaciones automáticas, confirmaciones y descartes. Reglas adicionales: un comprobante nunca se concilia solo por monto; un pago parcial o de un posible familiar solo es automático con identidad fuerte (referencia, documento o cuenta conocida); pedidos fuera de la ventana no son candidatos.
-- Los pedidos en caja se registran desde la pantalla Conciliación (en producción podrán llegar del ERP por la API). La bandeja permite confirmar candidatos, asignar manualmente (buscando cliente, documento o F001-2345) y descartar pagos que no son ventas.
+- Los pedidos en caja se registran desde la pantalla Conciliación o los envía el ERP por la API (`idExterno` evita duplicados). El ERP también envía comprobantes (`POST /api/v1/integracion/comprobantes`, idempotente; si ya hubo cobros aquí se conserva el saldo de Dely Pagos). La bandeja permite confirmar candidatos, asignar manualmente (buscando cliente, documento o F001-2345), descartar pagos que no son ventas, procesar pendientes de cualquier día y, solo Finanzas, deshacer una conciliación o descarte (devuelve el pedido o el saldo, olvida el alias y la cuenta aprendidos y lo audita).
 
 ### 3. Alertas de pago recibido
 - Notificación en pantalla con sonido en la caja cuando se concilia un pago de un pedido abierto.

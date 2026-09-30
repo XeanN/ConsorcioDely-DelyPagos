@@ -4,7 +4,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { BaseDatos } from '../db/prisma.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { BusEventos } from '../eventos/bus.js';
-import { crearAutenticador, exigirRol } from '../auth/plugin-auth.js';
+import { actorDe, crearAutenticador, exigirAcceso, exigirRol } from '../auth/plugin-auth.js';
 import type { ConfigMotor, Evaluacion } from '../conciliacion/motor.js';
 import { ErrorConciliacion, ServicioConciliacion } from '../conciliacion/servicio-conciliacion.js';
 import { INCLUIR_VISTA, aVista, vistaParaRol } from '../movimientos/vista.js';
@@ -161,6 +161,29 @@ export const rutasConciliacion =
     );
 
     app.post(
+      '/conciliaciones/:id/revertir',
+      {
+        preHandler: [autenticar, exigirRol('FINANZAS')],
+        schema: {
+          ...comun,
+          tags: ['conciliación'],
+          summary: 'Deshacer una conciliación o un descarte equivocado (vuelve a la bandeja)',
+          params: z.object({ id: z.uuid() }),
+          body: z.object({ motivo: z.string().trim().min(5).max(200) }),
+          response: { 204: z.null(), 404: esquemaError, 409: esquemaError },
+        },
+      },
+      async (request, reply) => {
+        try {
+          await servicio.revertir(request.params.id, request.body.motivo, request.usuarioSesion!);
+          return reply.status(204).send(null);
+        } catch (error) {
+          return responderError(reply, error);
+        }
+      },
+    );
+
+    app.post(
       '/conciliaciones/procesar',
       {
         preHandler: [autenticar, exigirRol('FINANZAS')],
@@ -236,12 +259,15 @@ export const rutasConciliacion =
       },
     );
 
-    // ─── Pedidos en caja ───────────────────────────────────
+    // ─── Pedidos en caja (personas o el ERP con alcance "pedidos") ───
+
+    const verPedidos = { preHandler: [autenticar, exigirAcceso(['CAJA', 'VENTAS', 'FINANZAS'], 'pedidos')] };
+    const gestionarPedidos = { preHandler: [autenticar, exigirAcceso(['CAJA', 'FINANZAS'], 'pedidos')] };
 
     app.get(
       '/pedidos',
       {
-        ...todos,
+        ...verPedidos,
         schema: {
           ...comun,
           tags: ['pedidos en caja'],
@@ -262,6 +288,7 @@ export const rutasConciliacion =
         });
         return pedidos.map((p) => ({
           id: p.id,
+          idExterno: p.idExterno,
           tienda: p.tienda,
           caja: p.caja,
           monto: Number(p.monto),
@@ -277,38 +304,67 @@ export const rutasConciliacion =
     app.post(
       '/pedidos',
       {
-        ...cajaYFinanzas,
+        ...gestionarPedidos,
         schema: {
           ...comun,
           tags: ['pedidos en caja'],
           summary: 'Registrar un pedido que espera pago por Yape, Plin o transferencia',
-          body: z.object({
-            monto: z.number().positive().max(1_000_000).multipleOf(0.01),
-            moneda: moneda.default('PEN'),
-            tienda: z.string().trim().min(2).max(60),
-            caja: z.string().trim().min(1).max(20),
-            clienteId: z.uuid().nullable().optional(),
-          }),
+          description:
+            'Desde el ERP: enviar idExterno (el número de pedido del ERP) para que un reenvío no duplique ' +
+            'el pedido, y identificar al cliente con clienteDocumento.',
+          body: z
+            .object({
+              monto: z.number().positive().max(1_000_000).multipleOf(0.01),
+              moneda: moneda.default('PEN'),
+              tienda: z.string().trim().min(2).max(60),
+              caja: z.string().trim().min(1).max(20),
+              clienteId: z.uuid().nullable().optional(),
+              clienteDocumento: z
+                .object({ tipoDoc: z.enum(['DNI', 'RUC', 'CE']), numeroDoc: z.string().regex(/^\d{8,12}$/) })
+                .optional(),
+              idExterno: z.string().trim().min(1).max(80).optional(),
+            })
+            .refine((b) => !(b.clienteId && b.clienteDocumento), 'Use clienteId o clienteDocumento, no ambos'),
+          response: {
+            200: z.object({ id: z.string(), duplicado: z.literal(true) }),
+            201: z.object({ id: z.string() }),
+            400: esquemaError,
+          },
         },
       },
       async (request, reply) => {
         const b = request.body;
+        if (b.idExterno) {
+          const existente = await db.pedidoCaja.findUnique({ where: { idExterno: b.idExterno } });
+          if (existente) return reply.status(200).send({ id: existente.id, duplicado: true as const });
+        }
+        let clienteId = b.clienteId ?? null;
+        if (b.clienteDocumento) {
+          const cliente = await db.cliente.findUnique({
+            where: { tipoDoc_numeroDoc: b.clienteDocumento },
+            select: { id: true },
+          });
+          if (!cliente) return reply.status(400).send({ error: 'No existe un cliente con ese documento.' });
+          clienteId = cliente.id;
+        }
+        const actor = actorDe(request.usuarioSesion!);
         const pedido = await db.pedidoCaja.create({
           data: {
             monto: b.monto.toFixed(2),
             moneda: b.moneda,
             tienda: b.tienda,
             caja: b.caja,
-            clienteId: b.clienteId ?? null,
-            creadoPorId: request.usuarioSesion!.id,
+            clienteId,
+            idExterno: b.idExterno ?? null,
+            creadoPorId: actor.usuarioId,
           },
         });
         await registrarAuditoria(db, {
-          usuarioId: request.usuarioSesion!.id,
+          usuarioId: actor.usuarioId,
           accion: 'PEDIDO_CREADO',
           entidad: 'pedido',
           entidadId: pedido.id,
-          datos: { monto: b.monto, moneda: b.moneda, caja: b.caja },
+          datos: { ...actor.datos, monto: b.monto, moneda: b.moneda, caja: b.caja, idExterno: b.idExterno ?? null },
         });
         return reply.status(201).send({ id: pedido.id });
       },
@@ -317,7 +373,7 @@ export const rutasConciliacion =
     app.post(
       '/pedidos/:id/cancelar',
       {
-        ...cajaYFinanzas,
+        ...gestionarPedidos,
         schema: {
           ...comun,
           tags: ['pedidos en caja'],
@@ -332,11 +388,13 @@ export const rutasConciliacion =
           data: { estado: 'CANCELADO', cerradoEn: new Date() },
         });
         if (r.count === 0) return reply.status(409).send({ error: 'El pedido ya no está abierto.' });
+        const actor = actorDe(request.usuarioSesion!);
         await registrarAuditoria(db, {
-          usuarioId: request.usuarioSesion!.id,
+          usuarioId: actor.usuarioId,
           accion: 'PEDIDO_CANCELADO',
           entidad: 'pedido',
           entidadId: request.params.id,
+          datos: actor.datos,
         });
         return reply.status(204).send(null);
       },

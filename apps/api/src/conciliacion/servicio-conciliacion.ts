@@ -239,6 +239,104 @@ export class ServicioConciliacion {
     await this.publicar(conciliacion.movimientoId);
   }
 
+  /**
+   * Deshace una conciliación equivocada (o un descarte). Devuelve el pedido a "esperando pago"
+   * o el saldo al comprobante, olvida lo aprendido de ese pago y lo regresa a la bandeja.
+   */
+  async revertir(conciliacionId: string, motivo: string, usuario: UsuarioSesion): Promise<void> {
+    const c = await this.db.conciliacion.findUnique({
+      where: { id: conciliacionId },
+      include: { movimiento: true },
+    });
+    if (!c) throw new ErrorConciliacion(404, 'Conciliación no encontrada.');
+    if (c.estado !== 'CONCILIADO' && c.estado !== 'DESCARTADO') {
+      throw new ErrorConciliacion(409, 'Solo se puede deshacer un pago conciliado o descartado.');
+    }
+    const m = c.movimiento;
+    const monto = c.montoAplicado === null ? 0 : Number(c.montoAplicado);
+    const olvidado: { alias?: string; cuenta?: string } = {};
+
+    await this.db.$transaction(async (tx) => {
+      const tomada = await tx.conciliacion.updateMany({
+        where: { id: conciliacionId, estado: c.estado },
+        data: {
+          estado: 'SIN_IDENTIFICAR',
+          comprobanteId: null,
+          pedidoId: null,
+          montoAplicado: null,
+          confirmadoPorId: null,
+          confirmadoEn: null,
+          motivos: [...((c.motivos as string[]) ?? []), `revertido por ${usuario.nombre}: ${motivo}`],
+        },
+      });
+      if (tomada.count === 0) throw new ErrorConciliacion(409, 'Este pago cambió mientras tanto; recargue.');
+
+      let clienteId: string | null = null;
+      if (c.estado === 'CONCILIADO' && c.pedidoId) {
+        const pedido = await tx.pedidoCaja.findUnique({ where: { id: c.pedidoId } });
+        clienteId = pedido?.clienteId ?? null;
+        await tx.pedidoCaja.updateMany({
+          where: { id: c.pedidoId, estado: 'PAGADO' },
+          data: { estado: 'ABIERTO', cerradoEn: null },
+        });
+      }
+      if (c.estado === 'CONCILIADO' && c.comprobanteId) {
+        const comprobante = await tx.comprobante.findUniqueOrThrow({ where: { id: c.comprobanteId } });
+        clienteId = comprobante.clienteId;
+        const total = Number(comprobante.total);
+        const saldo = Math.min(total, Math.round((Number(comprobante.saldoPendiente) + monto) * 100) / 100);
+        const r = await tx.comprobante.updateMany({
+          where: { id: comprobante.id, saldoPendiente: comprobante.saldoPendiente },
+          data: {
+            saldoPendiente: saldo.toFixed(2),
+            estado: saldo >= total - 0.005 ? 'PENDIENTE' : 'PARCIAL',
+          },
+        });
+        if (r.count === 0) throw new ErrorConciliacion(409, 'El comprobante cambió mientras tanto; recargue.');
+      }
+
+      // Olvidar lo aprendido de este pago: el alias y la cuenta vistos en la confirmación equivocada.
+      if (clienteId && c.confirmadoEn) {
+        if (m.ordenanteNombre) {
+          const aliasNormalizado = normalizarNombre(m.ordenanteNombre);
+          const borrados = await tx.aliasCliente.deleteMany({
+            where: { clienteId, aliasNormalizado, creadoEn: { gte: new Date(c.confirmadoEn.getTime() - 5_000) } },
+          });
+          if (borrados.count > 0) olvidado.alias = m.ordenanteNombre;
+        }
+      }
+      if (clienteId && m.ordenanteCuenta) {
+        const cuenta = await tx.cuentaOrigenCliente.findUnique({
+          where: { clienteId_cuenta: { clienteId, cuenta: m.ordenanteCuenta } },
+        });
+        if (cuenta) {
+          if (cuenta.vecesVista <= 1) await tx.cuentaOrigenCliente.delete({ where: { id: cuenta.id } });
+          else await tx.cuentaOrigenCliente.update({ where: { id: cuenta.id }, data: { vecesVista: { decrement: 1 } } });
+          olvidado.cuenta = m.ordenanteCuenta.slice(-4);
+        }
+      }
+
+      await registrarAuditoria(tx, {
+        usuarioId: usuario.id,
+        accion: 'CONCILIACION_REVERTIDA',
+        entidad: 'movimiento',
+        entidadId: m.id,
+        datos: {
+          conciliacionId,
+          estadoAnterior: c.estado,
+          idBanco: m.idBanco,
+          monto: Number(m.monto),
+          destinoAnterior: c.pedidoId ? { tipo: 'PEDIDO', id: c.pedidoId } : c.comprobanteId ? { tipo: 'COMPROBANTE', id: c.comprobanteId } : null,
+          montoDevuelto: monto,
+          motivo,
+          olvidado,
+        },
+      });
+    });
+
+    await this.publicar(m.id);
+  }
+
   /** Concilia los movimientos de un rango que todavía no tienen decisión. */
   async procesarPendientes(desde: Date, hasta: Date): Promise<number> {
     const pendientes = await this.db.movimiento.findMany({

@@ -42,7 +42,7 @@ export async function ejecutarSeed(
   await db.$executeRaw`TRUNCATE TABLE auditoria, notificaciones, alertas, conciliaciones,
     movimientos, validaciones_proveedor, proveedores, pedidos_caja, comprobantes,
     cuentas_origen_cliente, alias_cliente, clientes, cuentas_bancarias,
-    suscripciones_webhook, sesiones, usuarios RESTART IDENTITY CASCADE`;
+    suscripciones_webhook, clientes_integracion, sesiones, usuarios RESTART IDENTITY CASCADE`;
 
   // Usuarios de demo por rol (definidos en SEED_USUARIOS_DEMO, nunca en el código).
   const usuarios = [];

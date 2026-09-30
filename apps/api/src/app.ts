@@ -1,5 +1,6 @@
 import Fastify, { type FastifyError } from 'fastify';
 import cookie from '@fastify/cookie';
+import formbody from '@fastify/formbody';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -14,6 +15,7 @@ import {
 } from 'fastify-type-provider-zod';
 import { configMotor, type Config } from './config.js';
 import { rutasConciliacion } from './rutas/conciliacion.js';
+import { rutasIntegraciones } from './rutas/integraciones.js';
 import type { BaseDatos } from './db/prisma.js';
 import { BusEventos } from './eventos/bus.js';
 import { rutasMovimientos } from './rutas/movimientos.js';
@@ -52,6 +54,8 @@ export async function construirApp(config: Config, dependencias: Dependencias = 
   });
 
   await app.register(cookie);
+  // OAuth2 exige aceptar application/x-www-form-urlencoded en /oauth/token.
+  await app.register(formbody, { bodyLimit: 4096 });
 
   await app.register(cors, {
     origin: config.CORS_ORIGENES,
@@ -109,6 +113,9 @@ export async function construirApp(config: Config, dependencias: Dependencias = 
     await app.register(rutasAuth(db, configAuth), { prefix: '/api/v1/auth' });
     await app.register(rutasAuditoria(db, configAuth.JWT_SECRETO), { prefix: '/api/v1/auditoria' });
     await app.register(rutasUsuarios(db, configAuth.JWT_SECRETO), { prefix: '/api/v1/usuarios' });
+    await app.register(rutasIntegraciones(db, configAuth.JWT_SECRETO, config.ACCESO_MINUTOS), {
+      prefix: '/api/v1',
+    });
     const bus = dependencias.bus ?? new BusEventos();
     await app.register(rutasConciliacion(db, bus, configAuth.JWT_SECRETO, configMotor(config)), {
       prefix: '/api/v1',
